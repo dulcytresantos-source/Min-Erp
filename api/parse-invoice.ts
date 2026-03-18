@@ -8,6 +8,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY is missing in environment variables");
+    return res.status(500).json({ 
+      error: "Configuración incompleta", 
+      message: "La API Key de Gemini no está configurada en el servidor (Vercel)." 
+    });
+  }
+
   const { base64Data, mimeType } = req.body;
 
   if (!base64Data || !mimeType) {

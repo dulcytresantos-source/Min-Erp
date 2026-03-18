@@ -19,7 +19,8 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 app.post("/api/parse-invoice", async (req, res) => {
   const { base64Data, mimeType } = req.body;
