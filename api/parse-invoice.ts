@@ -19,8 +19,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { base64Data, mimeType } = req.body;
 
   if (!base64Data || !mimeType) {
-    return res.status(400).json({ error: "Missing base64Data or mimeType" });
+    console.error("Missing base64Data or mimeType in request body");
+    return res.status(400).json({ error: "Faltan datos de la factura (base64Data o mimeType)" });
   }
+
+  console.log(`Processing invoice: ${mimeType}, size: ${Math.round(base64Data.length * 0.75 / 1024)} KB`);
 
   try {
     const model = "gemini-3-flash-preview";

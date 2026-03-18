@@ -2,7 +2,6 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { createClient } from "@libsql/client";
-import multer from "multer";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -24,9 +23,21 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 app.post("/api/parse-invoice", async (req, res) => {
   const { base64Data, mimeType } = req.body;
-  if (!base64Data || !mimeType) {
-    return res.status(400).json({ error: "Missing base64Data or mimeType" });
+
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY is missing in environment variables");
+    return res.status(500).json({ 
+      error: "Configuración incompleta", 
+      message: "La API Key de Gemini no está configurada en el servidor." 
+    });
   }
+
+  if (!base64Data || !mimeType) {
+    console.error("Missing base64Data or mimeType in request body");
+    return res.status(400).json({ error: "Faltan datos de la factura (base64Data o mimeType)" });
+  }
+
+  console.log(`Processing invoice: ${mimeType}, size: ${Math.round(base64Data.length * 0.75 / 1024)} KB`);
 
   try {
     const model = "gemini-3-flash-preview";
@@ -90,7 +101,8 @@ app.post("/api/parse-invoice", async (req, res) => {
       },
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const text = response.text || "{}";
+    res.json(JSON.parse(text));
   } catch (error) {
     console.error("Error parsing invoice with Gemini:", error);
     res.status(500).json({ 
