@@ -54,8 +54,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    if (method === "PUT") {
+      const { id, name, cif, address } = req.body;
+      if (!id) return res.status(400).json({ error: "ID is required" });
+      
+      await db.execute({
+        sql: "UPDATE companies SET name = ?, cif = ?, address = ? WHERE id = ?",
+        args: [name || null, cif || null, address || null, id],
+      });
+      return res.status(200).json({ success: true });
+    }
+
+    if (method === "DELETE") {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: "ID is required" });
+      const companyId = Array.isArray(id) ? id[0] : id;
+
+      // Delete associated data
+      await db.execute({
+        sql: "DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?)",
+        args: [companyId]
+      });
+      await db.execute({
+        sql: "DELETE FROM invoices WHERE company_id = ?",
+        args: [companyId]
+      });
+      await db.execute({
+        sql: "DELETE FROM suppliers WHERE company_id = ?",
+        args: [companyId]
+      });
+      await db.execute({
+        sql: "DELETE FROM companies WHERE id = ?",
+        args: [companyId]
+      });
+      
+      return res.status(200).json({ success: true });
+    }
+
     // Método no permitido
-    res.setHeader("Allow", ["GET", "POST"]);
+    res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
     return res.status(405).end(`Método ${method} no permitido`);
 
   } catch (error) {

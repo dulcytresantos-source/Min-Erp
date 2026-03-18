@@ -280,6 +280,36 @@ app.put("/api/companies/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/companies/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Delete associated data first to maintain integrity
+    // 1. Payments (via invoices)
+    await db.execute({
+      sql: "DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?)",
+      args: [id]
+    });
+    // 2. Invoices
+    await db.execute({
+      sql: "DELETE FROM invoices WHERE company_id = ?",
+      args: [id]
+    });
+    // 3. Suppliers
+    await db.execute({
+      sql: "DELETE FROM suppliers WHERE company_id = ?",
+      args: [id]
+    });
+    // 4. Company
+    await db.execute({
+      sql: "DELETE FROM companies WHERE id = ?",
+      args: [id]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.get("/api/invoices/all", async (req, res) => {
   const companyId = (req.query.companyId as string) ?? null;
   try {

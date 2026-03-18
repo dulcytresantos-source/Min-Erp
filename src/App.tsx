@@ -22,7 +22,8 @@ import {
   ArrowUp,
   ArrowDown,
   Filter,
-  Settings
+  Settings,
+  Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { clsx, type ClassValue } from "clsx";
@@ -257,6 +258,9 @@ export default function App() {
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', address: '', cif: '' });
+  const [isDeletingCompany, setIsDeletingCompany] = useState<Company | null>(null);
+  const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
+  const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
 
   const [movementSortField, setMovementSortField] = useState<string | null>('date');
   const [movementSortDirection, setMovementSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -526,6 +530,43 @@ export default function App() {
     } catch (error) {
       console.error("Error adding company:", error);
     }
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!isDeletingCompany) return;
+    if (userDeleteCodeInput !== deleteConfirmCode) {
+      alert("El código introducido no es correcto.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/companies/${isDeletingCompany.id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        if (activeCompanyId === isDeletingCompany.id) {
+          const otherCompany = companies.find(c => c.id !== isDeletingCompany.id);
+          if (otherCompany) {
+            setActiveCompanyId(otherCompany.id);
+          } else {
+            setActiveCompanyId(null);
+          }
+        }
+        setIsDeletingCompany(null);
+        setUserDeleteCodeInput("");
+        setDeleteConfirmCode("");
+        fetchCompanies();
+      }
+    } catch (error) {
+      console.error("Error deleting company:", error);
+    }
+  };
+
+  const initiateDeleteCompany = (company: Company) => {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setDeleteConfirmCode(code);
+    setIsDeletingCompany(company);
+    setUserDeleteCodeInput("");
   };
 
   const processFiles = async (files: FileList | File[], targetSupplier?: Supplier) => {
@@ -963,15 +1004,26 @@ export default function App() {
 
                 <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                   {companies.map(company => (
-                    <div key={company.id} className="p-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5">
+                    <div key={company.id} className="p-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 group relative">
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-tight">{company.name}</p>
                           <p className="text-[9px] opacity-40 uppercase tracking-widest">{company.cif}</p>
                         </div>
-                        {company.is_default === 1 && (
-                          <span className="text-[7px] font-bold uppercase tracking-widest bg-[#0A0A0A]/10 px-1 rounded-sm">Default</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {company.is_default === 1 && (
+                            <span className="text-[7px] font-bold uppercase tracking-widest bg-[#0A0A0A]/10 px-1 rounded-sm">Default</span>
+                          )}
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              initiateDeleteCompany(company);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-all"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1784,6 +1836,66 @@ export default function App() {
                 >
                   Confirmar Liquidación
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {isDeletingCompany && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+            >
+              <div className="p-6 bg-red-600 text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Compañía</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Acción Irreversible</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsDeletingCompany(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+              </div>
+              <div className="p-8 flex flex-col gap-6 text-center">
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar <span className="underline">{isDeletingCompany.name}</span>?</p>
+                  <p className="text-[10px] opacity-50 font-medium leading-relaxed uppercase tracking-tight">Esta acción eliminará permanentemente la compañía y todos sus datos asociados (proveedores, facturas y pagos).</p>
+                </div>
+
+                <div className="bg-[#F5F5F4] p-6 rounded-sm border border-[#0A0A0A]/5 space-y-4">
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-40">Introduce el código de seguridad para confirmar:</p>
+                  <div className="text-3xl font-mono font-black tracking-[0.5em] text-[#0A0A0A] select-none">
+                    {deleteConfirmCode}
+                  </div>
+                  <input 
+                    type="text" 
+                    maxLength={4}
+                    value={userDeleteCodeInput}
+                    onChange={(e) => setUserDeleteCodeInput(e.target.value)}
+                    placeholder="0000"
+                    className="w-full text-center py-3 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none font-mono font-bold text-2xl tracking-[0.5em] focus:border-red-500 transition-all placeholder:opacity-10"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setIsDeletingCompany(null)}
+                    className="py-3 bg-[#F5F5F4] text-[#0A0A0A] rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-[#E5E5E4] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={handleDeleteCompany}
+                    disabled={userDeleteCodeInput !== deleteConfirmCode}
+                    className="py-3 bg-red-600 text-white rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-red-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Eliminar Permanentemente
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
