@@ -23,7 +23,9 @@ import {
   ArrowDown,
   Filter,
   Settings,
-  Trash2
+  Trash2,
+  Download,
+  Layers
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { clsx, type ClassValue } from "clsx";
@@ -225,6 +227,32 @@ interface LogEntry {
   message: string;
 }
 
+const exportToCSV = (data: any[], filename: string) => {
+  if (data.length === 0) return;
+  
+  const headers = Object.keys(data[0]).join(",");
+  const rows = data.map(row => 
+    Object.values(row).map(value => {
+      const strValue = String(value);
+      if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+        return `"${strValue.replace(/"/g, '""')}"`;
+      }
+      return strValue;
+    }).join(",")
+  );
+  
+  const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${filename}.csv`);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 export default function App() {
   const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements'>('suppliers');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -242,9 +270,14 @@ export default function App() {
   const [isLiquidating, setIsLiquidating] = useState<{
     id: number;
     invoice_number: string;
+    doc_id: string;
+    supplier_id: string;
     total_amount: number;
     paid_amount: number;
   } | null>(null);
+  const [isMultipleLiquidation, setIsMultipleLiquidation] = useState(false);
+  const [selectedInvoicesForBatch, setSelectedInvoicesForBatch] = useState<number[]>([]);
+  const [isBatchLiquidating, setIsBatchLiquidating] = useState<boolean>(false);
   const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>("");
@@ -333,7 +366,7 @@ export default function App() {
     let result = invoices.map(inv => {
       const invPayments = allPayments.filter(p => p.doc_id === inv.doc_id);
       const totalPaid = invPayments.reduce((sum, p) => sum + p.amount, 0);
-      const pending = inv.amount - totalPaid;
+      const pending = Math.round((inv.amount - totalPaid) * 100) / 100;
       const status = pending <= 0 ? 'LIQUIDADA' : 'PENDIENTE';
       return {
         ...inv,
@@ -863,7 +896,7 @@ export default function App() {
       return;
     }
 
-    const pending = (isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0);
+    const pending = Math.round(((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0)) * 100) / 100;
     if (parseFloat(paymentAmount) > pending + 0.01) {
       setLiquidationError(`El importe no puede superar el pendiente (${formatCurrency(pending)})`);
       return;
@@ -871,51 +904,161 @@ export default function App() {
 
     setLiquidationError(null);
 
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        invoice_id: isLiquidating.id,
-        payment_date: formattedDate,
-        amount_paid: parseFloat(paymentAmount),
-        method: paymentMethod,
-        bank_movement_id: bankId
-      })
-    });
+    const invoicePayments = isMultipleLiquidation 
+      ? groupedInvoices
+          .filter(inv => selectedInvoicesForBatch.includes(inv.id))
+          .map(inv => ({
+            invoice_id: inv.id,
+            amount_paid: inv.pending
+          }))
+      : [{
+          invoice_id: isLiquidating.id,
+          amount_paid: parseFloat(paymentAmount)
+        }];
 
-    setIsLiquidating(null);
-    setPaymentAmount("");
-    setBankId("");
-    setLiquidationError(null);
-    await fetchData();
-    await fetchAllMovements();
-    if (selectedSupplier && activeCompanyId) {
-      try {
-        const sRes = await fetch(`/api/suppliers?companyId=${activeCompanyId}`);
-        const sData = await sRes.json();
-        if (Array.isArray(sData)) {
-          const updated = sData.find((s: Supplier) => s.id === selectedSupplier.id);
-          if (updated) {
-            setSelectedSupplier(updated);
+    try {
+      const endpoint = isMultipleLiquidation ? "/api/payments/batch" : "/api/payments";
+      const body = isMultipleLiquidation 
+        ? {
+            invoice_payments: invoicePayments,
+            payment_date: formattedDate,
+            method: paymentMethod,
+            bank_movement_id: bankId
           }
-        }
-        fetchSupplierDetails(selectedSupplier.id);
-      } catch (error) {
-        console.error("Error updating selected supplier:", error);
+        : {
+            invoice_id: isLiquidating.id,
+            payment_date: formattedDate,
+            amount_paid: parseFloat(paymentAmount),
+            method: paymentMethod,
+            bank_movement_id: bankId
+          };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        setLiquidationError(errorData.error || "Error al procesar la liquidación");
+        return;
       }
+
+      setIsLiquidating(null);
+      setIsMultipleLiquidation(false);
+      setSelectedInvoicesForBatch([]);
+      setPaymentAmount("");
+      setBankId("");
+      setLiquidationError(null);
+      await fetchData();
+      await fetchAllMovements();
+      if (selectedSupplier && activeCompanyId) {
+        try {
+          const sRes = await fetch(`/api/suppliers?companyId=${activeCompanyId}`);
+          const sData = await sRes.json();
+          if (Array.isArray(sData)) {
+            const updated = sData.find((s: Supplier) => s.id === selectedSupplier.id);
+            if (updated) {
+              setSelectedSupplier(updated);
+            }
+          }
+          fetchSupplierDetails(selectedSupplier.id);
+        } catch (error) {
+          console.error("Error updating selected supplier:", error);
+        }
+      }
+    } catch (err) {
+      setLiquidationError("Error de conexión al servidor");
+    }
+  };
+
+  const handleBatchLiquidate = async () => {
+    if (selectedInvoicesForBatch.length === 0) return;
+
+    const displayDate = smartFormatDate(paymentDate);
+    let formattedDate = "";
+    if (displayDate.includes('/')) {
+      const parts = displayDate.split('/');
+      if (parts.length === 3) {
+        formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(displayDate)) {
+      formattedDate = displayDate;
+    }
+    
+    if (!formattedDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+      setLiquidationError("Fecha de pago no válida (Use DD/MM/YYYY o T)");
+      return;
+    }
+    
+    if (!bankId.trim()) {
+      setLiquidationError("El Nº de Movimiento de Liquidación es obligatorio");
+      return;
+    }
+
+    const invoicePayments = groupedInvoices
+      .filter(inv => selectedInvoicesForBatch.includes(inv.id))
+      .map(inv => ({
+        invoice_id: inv.id,
+        amount_paid: inv.pending
+      }));
+
+    setLiquidationError(null);
+
+    try {
+      const res = await fetch("/api/payments/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_payments: invoicePayments,
+          payment_date: formattedDate,
+          method: paymentMethod,
+          bank_movement_id: bankId
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        setLiquidationError(errorData.error || "Error en la liquidación por lotes");
+        return;
+      }
+
+      setIsBatchLiquidating(false);
+      setSelectedInvoicesForBatch([]);
+      setPaymentAmount("");
+      setBankId("");
+      setLiquidationError(null);
+      await fetchData();
+      await fetchAllMovements();
+      if (selectedSupplier && activeCompanyId) {
+        fetchSupplierDetails(selectedSupplier.id);
+      }
+    } catch (err) {
+      setLiquidationError("Error de conexión al servidor");
     }
   };
 
   const handleDeletePayment = async (paymentId: number) => {
     if (!paymentId) return;
+    console.log(`Attempting to delete payment with ID: ${paymentId}`);
     try {
       const res = await fetch(`/api/payments/${paymentId}`, {
         method: "DELETE"
       });
       
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Error al eliminar la liquidación");
+        let errorMessage = "Error al eliminar la liquidación";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } else {
+          const textError = await res.text();
+          console.error("Server returned non-JSON error:", textError);
+          errorMessage = `Error del servidor (${res.status})`;
+        }
+        throw new Error(errorMessage);
       }
 
       setIsDeletingPayment(null);
@@ -926,12 +1069,14 @@ export default function App() {
       
       if (selectedSupplier && activeCompanyId) {
         const sRes = await fetch(`/api/suppliers?companyId=${activeCompanyId}`);
-        const sData = await sRes.json();
-        if (Array.isArray(sData)) {
-          const updated = sData.find((s: Supplier) => s.id === selectedSupplier.id);
-          if (updated) {
-            setSelectedSupplier(updated);
-            fetchSupplierDetails(updated.id);
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData)) {
+            const updated = sData.find((s: Supplier) => s.id === selectedSupplier.id);
+            if (updated) {
+              setSelectedSupplier(updated);
+              fetchSupplierDetails(updated.id);
+            }
           }
         }
       }
@@ -939,6 +1084,20 @@ export default function App() {
       console.error("Error deleting payment:", error);
       alert(error instanceof Error ? error.message : "Error al eliminar la liquidación");
     }
+  };
+
+  const handleExportHistory = () => {
+    const dataToExport = filteredAndSortedInvoices.map(inv => ({
+      "DOC (Int)": inv.doc_id || "",
+      "DOCEXT (Ext)": inv.doc_ext || "",
+      "Proveedor": inv.supplier_name || "",
+      "CIF": inv.supplier_cif || "",
+      "Fecha": formatDate(inv.issue_date),
+      "Total": inv.total_amount || 0,
+      "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
+    }));
+    
+    exportToCSV(dataToExport, `historico_facturas_${format(new Date(), "yyyyMMdd")}`);
   };
 
   const sortedSuppliers = useMemo(() => {
@@ -1222,23 +1381,23 @@ export default function App() {
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
                 {/* Technical Header */}
                 <div className="grid grid-cols-[40px_100px_120px_1fr_120px_140px_120px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
-                  <div className="p-3 border-r border-[#0A0A0A]/5"></div>
-                  <button onClick={() => handleSort('id')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                  <div className="p-1.5 border-r border-[#0A0A0A]/5"></div>
+                  <button onClick={() => handleSort('id')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
                     Nº Prov. {sortConfig.key === 'id' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
-                  <button onClick={() => handleSort('alias')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                  <button onClick={() => handleSort('alias')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
                     Alias {sortConfig.key === 'alias' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
-                  <button onClick={() => handleSort('name')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                  <button onClick={() => handleSort('name')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
                     Nombre Fiscal {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
-                  <button onClick={() => handleSort('cif')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                  <button onClick={() => handleSort('cif')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
                     CIF/NIF {sortConfig.key === 'cif' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
-                  <button onClick={() => handleSort('city')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                  <button onClick={() => handleSort('city')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
                     Población {sortConfig.key === 'city' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
-                  <button onClick={() => handleSort('pending_balance')} className="p-3 text-right hover:bg-[#0A0A0A]/5 transition-colors flex items-center justify-end gap-1">
+                  <button onClick={() => handleSort('pending_balance')} className="p-1.5 text-right hover:bg-[#0A0A0A]/5 transition-colors flex items-center justify-end gap-1">
                     Saldo (EUR) {sortConfig.key === 'pending_balance' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
                   </button>
                 </div>
@@ -1254,16 +1413,16 @@ export default function App() {
                       }}
                       className="grid grid-cols-[40px_100px_120px_1fr_120px_140px_120px] w-full text-left hover:bg-[#0A0A0A] hover:text-white transition-colors group"
                     >
-                      <div className="p-3 border-r border-[#0A0A0A]/5 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center opacity-0 group-hover:opacity-100">
                         <ChevronRight size={14} />
                       </div>
-                      <div className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.id}</div>
-                      <div className="p-3 border-r border-[#0A0A0A]/5 font-bold text-[10px] flex items-center truncate uppercase tracking-tight">{s.alias || "---"}</div>
-                      <div className="p-3 border-r border-[#0A0A0A]/5 font-bold text-xs flex items-center truncate">{toTitleCase(s.name)}</div>
-                      <div className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.cif}</div>
-                      <div className="p-3 border-r border-[#0A0A0A]/5 text-[11px] flex items-center truncate opacity-60 group-hover:opacity-100 uppercase font-medium">{s.city || "---"}</div>
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.id}</div>
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-bold text-[10px] flex items-center truncate uppercase tracking-tight">{s.alias || "---"}</div>
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-bold text-xs flex items-center truncate">{toTitleCase(s.name)}</div>
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.cif}</div>
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[11px] flex items-center truncate opacity-60 group-hover:opacity-100 uppercase font-medium">{s.city || "---"}</div>
                       <div className={cn(
-                        "p-3 text-right font-mono text-[11px] flex items-center justify-end font-bold",
+                        "p-1.5 text-right font-mono text-[11px] flex items-center justify-end font-bold",
                         s.pending_balance > 0 ? "text-red-600 group-hover:text-red-400" : "text-emerald-600 group-hover:text-emerald-400"
                       )}>
                         {formatCurrency(s.pending_balance ?? 0)}
@@ -1323,79 +1482,166 @@ export default function App() {
                 </div>
 
                 <div className="p-8">
-                  <div className="grid grid-cols-2 gap-x-12 gap-y-6">
-                    {/* Left Column */}
-                    <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nº . . . . . . . . . . .</label>
-                        <div className="flex gap-1">
-                          <input readOnly value={selectedSupplier.id} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
-                          <button className="p-1.5 bg-[#F5F5F4] rounded-sm hover:bg-[#E4E3E0]"><Search size={12} /></button>
+                  {activeTab === 'General' && (
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+                      {/* Left Column */}
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nº . . . . . . . . . . .</label>
+                          <div className="flex gap-1">
+                            <input readOnly value={selectedSupplier.id} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
+                            <button className="p-1.5 bg-[#F5F5F4] rounded-sm hover:bg-[#E4E3E0]"><Search size={12} /></button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre. . . . . . . .</label>
+                          <input readOnly value={toTitleCase(selectedSupplier.name)} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-bold text-[11px] uppercase" />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre 2. . . . . . .</label>
+                          <input readOnly value={selectedSupplier.name2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección . . . . . .</label>
+                          <input readOnly value={selectedSupplier.address} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección 2 . . . . .</label>
+                          <input readOnly value={selectedSupplier.address2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">C.P. +Población . .</label>
+                          <div className="flex gap-1">
+                            <input readOnly value={selectedSupplier.zip_code || ""} className="w-16 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                            <input readOnly value={selectedSupplier.city || ""} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">CIF/NIF. . . . . . . . .</label>
+                          <input readOnly value={selectedSupplier.cif} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
                         </div>
                       </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre. . . . . . . .</label>
-                        <input readOnly value={toTitleCase(selectedSupplier.name)} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-bold text-[11px] uppercase" />
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre 2. . . . . . .</label>
-                        <input readOnly value={selectedSupplier.name2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección . . . . . .</label>
-                        <input readOnly value={selectedSupplier.address} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección 2 . . . . .</label>
-                        <input readOnly value={selectedSupplier.address2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">C.P. +Población . .</label>
-                        <div className="flex gap-1">
-                          <input readOnly value={selectedSupplier.zip_code || ""} className="w-16 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                          <input readOnly value={selectedSupplier.city || ""} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">CIF/NIF. . . . . . . . .</label>
-                        <input readOnly value={selectedSupplier.cif} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
-                      </div>
-                    </div>
 
-                    {/* Right Column */}
-                    <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Alias . . . . . . . . . .</label>
-                        <input 
-                          value={selectedSupplier.alias || ""} 
-                          onChange={(e) => handleUpdateAlias(selectedSupplier.id, e.target.value)}
-                          className="px-2 py-1.5 bg-white border border-[#0A0A0A]/10 rounded-sm outline-none font-bold text-[11px] uppercase tracking-tight focus:ring-1 focus:ring-violet-600/20" 
-                        />
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Saldo (DL) . . . . . .</label>
-                        <button 
-                          onClick={() => {
-                            setMovementsFilterSupplierId(selectedSupplier.id);
-                            setSearchQuery(""); // Clear search when navigating to specific supplier
-                            fetchSupplierDetails(selectedSupplier.id);
-                            setView('movements');
-                          }}
-                          className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] hover:bg-[#E4E3E0] transition-colors border-none outline-none text-red-600"
-                        >
-                          {formatCurrency(selectedSupplier.pending_balance ?? 0)}
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Bloqueado . . . . . .</label>
-                        <div className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-[10px] opacity-40 italic">No bloqueado</div>
-                      </div>
-                      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
-                        <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Últ. modif. . . . . . .</label>
-                        <input readOnly value={formatDate(new Date().toISOString())} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px] opacity-40" />
+                      {/* Right Column */}
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Alias . . . . . . . . . .</label>
+                          <input 
+                            value={selectedSupplier.alias || ""} 
+                            onChange={(e) => handleUpdateAlias(selectedSupplier.id, e.target.value)}
+                            className="px-2 py-1.5 bg-white border border-[#0A0A0A]/10 rounded-sm outline-none font-bold text-[11px] uppercase tracking-tight focus:ring-1 focus:ring-violet-600/20" 
+                          />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Saldo (DL) . . . . . .</label>
+                          <button 
+                            onClick={() => {
+                              setMovementsFilterSupplierId(selectedSupplier.id);
+                              setSearchQuery(""); // Clear search when navigating to specific supplier
+                              fetchSupplierDetails(selectedSupplier.id);
+                              setView('movements');
+                            }}
+                            className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] hover:bg-[#E4E3E0] transition-colors border-none outline-none text-red-600"
+                          >
+                            {formatCurrency(selectedSupplier.pending_balance ?? 0)}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Bloqueado . . . . . .</label>
+                          <div className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-[10px] opacity-40 italic">No bloqueado</div>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Últ. modif. . . . . . .</label>
+                          <input readOnly value={formatDate(new Date().toISOString())} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px] opacity-40" />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {activeTab === 'Facturación' && (
+                    <div className="flex flex-col gap-6">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-bold uppercase tracking-widest opacity-60">Facturas Pendientes</h3>
+                        {selectedInvoicesForBatch.length > 0 && (
+                          <button 
+                            onClick={() => {
+                              const total = groupedInvoices
+                                .filter(inv => selectedInvoicesForBatch.includes(inv.id))
+                                .reduce((sum, inv) => sum + inv.pending, 0);
+                              setPaymentAmount(total.toFixed(2));
+                              setIsBatchLiquidating(true);
+                            }}
+                            className="px-4 py-2 bg-[#0A0A0A] text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors flex items-center gap-2"
+                          >
+                            <Euro size={14} />
+                            Liquidar Seleccionadas ({selectedInvoicesForBatch.length})
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="border border-[#0A0A0A]/10 rounded-sm overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                          <thead className="bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
+                            <tr>
+                              <th className="p-2 border-r border-[#0A0A0A]/5 w-10">
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedInvoicesForBatch.length === groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length && groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedInvoicesForBatch(groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).map(inv => inv.id));
+                                    } else {
+                                      setSelectedInvoicesForBatch([]);
+                                    }
+                                  }}
+                                />
+                              </th>
+                              <th className="p-2 border-r border-[#0A0A0A]/5">Fecha</th>
+                              <th className="p-2 border-r border-[#0A0A0A]/5">Referencia</th>
+                              <th className="p-2 border-r border-[#0A0A0A]/5 text-right">Total</th>
+                              <th className="p-2 text-right">Pendiente</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#0A0A0A]/5">
+                            {groupedInvoices
+                              .filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0)
+                              .map(inv => (
+                                <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors">
+                                  <td className="p-2 border-r border-[#0A0A0A]/5">
+                                    <input 
+                                      type="checkbox"
+                                      checked={selectedInvoicesForBatch.includes(inv.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedInvoicesForBatch(prev => [...prev, inv.id]);
+                                        } else {
+                                          setSelectedInvoicesForBatch(prev => prev.filter(id => id !== inv.id));
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px]">{formatDate(inv.date)}</td>
+                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px] font-bold">{inv.reference}</td>
+                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono">{formatCurrency(inv.amount)}</td>
+                                  <td className="p-2 text-[10px] text-right font-mono text-red-600 font-bold">{formatCurrency(inv.pending)}</td>
+                                </tr>
+                              ))}
+                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="p-8 text-center text-[10px] opacity-40 italic">No hay facturas pendientes</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab !== 'General' && activeTab !== 'Facturación' && (
+                    <div className="p-12 text-center border border-dashed border-[#0A0A0A]/10 rounded-sm">
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Sección en desarrollo: {activeTab}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1470,48 +1716,48 @@ export default function App() {
                 <div className="grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
                   <div 
                     onClick={() => handleMovementSort('date')}
-                    className="p-3 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Fecha <SortIcon field="date" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('doc_id')}
-                    className="p-3 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     DOC (Int) <SortIcon field="doc_id" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('type')}
-                    className="p-3 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Tipo <SortIcon field="type" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('supplier_name')}
-                    className="p-3 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Proveedor / Referencia <SortIcon field="supplier_name" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('amount')}
-                    className="p-3 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Imp. Inicial <SortIcon field="amount" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('pending')}
-                    className="p-3 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Imp. Pdte. <SortIcon field="pending" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('status')}
-                    className="p-3 border-r border-[#0A0A0A]/5 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1.5 border-r border-[#0A0A0A]/5 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Estado <SortIcon field="status" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5 text-center">Liqs.</div>
-                  <div className="p-3 text-center">Acc.</div>
+                  <div className="p-1.5 border-r border-[#0A0A0A]/5 text-center">Liqs.</div>
+                  <div className="p-1.5 text-center">Acc.</div>
                 </div>
 
                 <div className="divide-y divide-[#0A0A0A]/5">
@@ -1527,24 +1773,24 @@ export default function App() {
                               isExpanded && "bg-[#F5F5F4]/30"
                             )}
                           >
-                            <div className="p-3 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>
-                            <div className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>
-                            <div className="p-3 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Factura</span>
                             </div>
-                            <div className="p-3 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
                               {inv.supplier_alias || inv.supplier_name}
                             </div>
-                            <div className="p-3 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
                               {formatCurrency(inv.amount)}
                             </div>
                             <div className={cn(
-                              "p-3 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
+                              "p-1.5 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
                               inv.pending > 0 ? "text-red-600 font-bold" : "text-emerald-600 opacity-40"
                             )}>
                               {formatCurrency(inv.pending)}
                             </div>
-                            <div className="p-3 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                            <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                               <span className={cn(
                                 "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
                                 inv.status === 'LIQUIDADA' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
@@ -1552,7 +1798,7 @@ export default function App() {
                                 {inv.status}
                               </span>
                             </div>
-                            <div className="p-3 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
+                            <div className="p-1.5 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
                               {inv.payments.length > 0 ? (
                                 <>
                                   <CreditCard size={10} />
@@ -1560,7 +1806,7 @@ export default function App() {
                                 </>
                               ) : "-"}
                             </div>
-                            <div className="p-3 flex items-center justify-center">
+                            <div className="p-1.5 flex items-center justify-center">
                               {inv.pending > 0 && (
                                 <button 
                                   onClick={(e) => {
@@ -1568,10 +1814,14 @@ export default function App() {
                                     setIsLiquidating({
                                       id: inv.id,
                                       invoice_number: inv.reference,
+                                      doc_id: inv.doc_id || "",
+                                      supplier_id: inv.supplier_id || "",
                                       total_amount: inv.amount,
                                       paid_amount: inv.amount - inv.pending
                                     });
-                                    setPaymentAmount(inv.pending.toString());
+                                    setIsMultipleLiquidation(false);
+                                    setSelectedInvoicesForBatch([inv.id]);
+                                    setPaymentAmount(inv.pending.toFixed(2));
                                   }}
                                   className="p-1.5 bg-[#0A0A0A] text-white rounded-sm hover:bg-[#1A1A1A] transition-colors"
                                   title="Liquidar Factura"
@@ -1592,22 +1842,22 @@ export default function App() {
                               >
                                 {inv.payments.map(p => (
                                   <div key={`pay-${p.id}`} className="grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0">
-                                    <div className="p-2 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                    <div className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                       <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
                                     </div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
                                       <ArrowRight size={10} className="mr-2 opacity-40" />
                                       LIQ: {p.bank_movement_id || p.reference}
                                     </div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-blue-600 font-bold">
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-blue-600 font-bold">
                                       {formatCurrency(p.amount)}
                                     </div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
-                                    <div className="p-2 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
-                                    <div className="p-2 text-center text-[9px] flex items-center justify-center">
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
+                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
+                                    <div className="p-1 text-center text-[9px] flex items-center justify-center">
                                       <button 
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -1689,6 +1939,13 @@ export default function App() {
                     <Filter size={14} />
                     Filtrar
                   </button>
+                  <button 
+                    onClick={handleExportHistory} 
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
+                  >
+                    <Download size={14} />
+                    Exportar CSV
+                  </button>
                 </div>
               </div>
 
@@ -1699,37 +1956,37 @@ export default function App() {
                       <tr className="bg-[#F5F5F4] border-b border-[#0A0A0A]/10">
                         <th 
                           onClick={() => handleInvoiceSort('doc_id')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           DOC (Int) <SortIcon field="doc_id" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('doc_ext')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           DOCEXT (Ext) <SortIcon field="doc_ext" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('supplier_name')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Proveedor <SortIcon field="supplier_name" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('issue_date')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Fecha <SortIcon field="issue_date" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('total_amount')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Total <SortIcon field="total_amount" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('status')}
-                          className="p-3 text-[9px] font-bold uppercase tracking-widest opacity-40 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Estado <SortIcon field="status" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
@@ -1738,9 +1995,9 @@ export default function App() {
                     <tbody className="divide-y divide-[#0A0A0A]/5">
                       {filteredAndSortedInvoices.map(inv => (
                         <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors group">
-                          <td className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold">{inv.doc_id || "-"}</td>
-                          <td className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[10px]">{inv.doc_ext || "-"}</td>
-                          <td className="p-3 border-r border-[#0A0A0A]/5">
+                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold">{inv.doc_id || "-"}</td>
+                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px]">{inv.doc_ext || "-"}</td>
+                          <td className="p-1.5 border-r border-[#0A0A0A]/5">
                             <button 
                               onClick={() => {
                                 const supplier = suppliers.find(s => s.id === inv.supplier_id);
@@ -1756,9 +2013,9 @@ export default function App() {
                               <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{inv.supplier_alias}</span>
                             </button>
                           </td>
-                          <td className="p-3 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
-                          <td className="p-3 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
-                          <td className="p-3 text-center">
+                          <td className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
+                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
+                          <td className="p-1.5 text-center">
                             <span className={cn(
                               "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm",
                               inv.status === 'Paid' ? "bg-emerald-50 text-emerald-600" : 
@@ -1974,12 +2231,96 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold tracking-tight uppercase">Liquidar Factura</h3>
-                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">REF: {isLiquidating.invoice_number}</p>
+                    <div className="flex gap-2 items-center">
+                      <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">DOC: {isLiquidating.doc_id}</p>
+                      <span className="w-1 h-1 bg-white/20 rounded-full" />
+                      <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">REF: {isLiquidating.invoice_number}</p>
+                    </div>
                   </div>
                 </div>
                 <button onClick={() => setIsLiquidating(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
               </div>
               <div className="p-6 flex flex-col gap-6">
+                {/* Type Selection */}
+                <div className="flex gap-4 p-1 bg-[#F5F5F4] rounded-sm">
+                  <button 
+                    onClick={() => {
+                      setIsMultipleLiquidation(false);
+                      setSelectedInvoicesForBatch([isLiquidating.id]);
+                      setPaymentAmount((isLiquidating.total_amount - isLiquidating.paid_amount).toFixed(2));
+                    }}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center justify-center gap-2",
+                      !isMultipleLiquidation ? "bg-white shadow-sm text-[#0A0A0A]" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
+                    )}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", !isMultipleLiquidation ? "bg-violet-600" : "bg-transparent border border-[#0A0A0A]/20")} />
+                    Liquidación Simple
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsMultipleLiquidation(true);
+                      // Ensure paymentAmount is correct for the current selection
+                      const total = groupedInvoices.filter(i => selectedInvoicesForBatch.includes(i.id)).reduce((sum, i) => sum + i.pending, 0);
+                      setPaymentAmount(total.toFixed(2));
+                    }}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center justify-center gap-2",
+                      isMultipleLiquidation ? "bg-white shadow-sm text-[#0A0A0A]" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
+                    )}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", isMultipleLiquidation ? "bg-violet-600" : "bg-transparent border border-[#0A0A0A]/20")} />
+                    Liquidación Múltiple
+                  </button>
+                </div>
+
+                {isMultipleLiquidation && (
+                  <div className="flex flex-col gap-3">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Seleccionar Facturas Pendientes</label>
+                    <div className="max-h-[200px] overflow-y-auto border border-[#0A0A0A]/5 rounded-sm divide-y divide-[#0A0A0A]/5">
+                      {groupedInvoices
+                        .filter(inv => inv.supplier_id === isLiquidating.supplier_id && inv.pending > 0)
+                        .map(inv => (
+                          <div 
+                            key={inv.id} 
+                            className={cn(
+                              "p-3 flex items-center justify-between cursor-pointer transition-colors",
+                              selectedInvoicesForBatch.includes(inv.id) ? "bg-violet-50/50" : "hover:bg-[#F5F5F4]"
+                            )}
+                            onClick={() => {
+                              if (selectedInvoicesForBatch.includes(inv.id)) {
+                                if (inv.id === isLiquidating.id) return; // Cannot deselect the main one
+                                const next = selectedInvoicesForBatch.filter(id => id !== inv.id);
+                                setSelectedInvoicesForBatch(next);
+                                const total = groupedInvoices.filter(i => next.includes(i.id)).reduce((sum, i) => sum + i.pending, 0);
+                                setPaymentAmount(total.toFixed(2));
+                              } else {
+                                const next = [...selectedInvoicesForBatch, inv.id];
+                                setSelectedInvoicesForBatch(next);
+                                const total = groupedInvoices.filter(i => next.includes(i.id)).reduce((sum, i) => sum + i.pending, 0);
+                                setPaymentAmount(total.toFixed(2));
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-4 h-4 rounded-sm border flex items-center justify-center transition-colors",
+                                selectedInvoicesForBatch.includes(inv.id) ? "bg-violet-600 border-violet-600 text-white" : "border-[#0A0A0A]/10 bg-white"
+                              )}>
+                                {selectedInvoicesForBatch.includes(inv.id) && <Plus size={10} />}
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-tight">{inv.reference}</p>
+                                <p className="text-[9px] opacity-40 uppercase tracking-widest font-bold">DOC: {inv.doc_id}</p>
+                              </div>
+                            </div>
+                            <p className="text-[10px] font-mono font-bold text-red-600">{formatCurrency(inv.pending)}</p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 {liquidationError && (
                   <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
                     <AlertCircle size={14} />
@@ -1994,11 +2335,20 @@ export default function App() {
                       <input 
                         type="number" 
                         value={paymentAmount}
+                        readOnly={isMultipleLiquidation}
                         onChange={(e) => setPaymentAmount(e.target.value)}
-                        className="w-full pl-8 pr-4 py-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-mono font-bold text-xl focus:border-[#0A0A0A]/20 transition-all"
+                        className={cn(
+                          "w-full pl-8 pr-4 py-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-mono font-bold text-xl focus:border-[#0A0A0A]/20 transition-all",
+                          isMultipleLiquidation && "opacity-60 cursor-not-allowed"
+                        )}
                       />
                     </div>
-                    <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Pendiente: {formatCurrency((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0))}</p>
+                    {!isMultipleLiquidation && (
+                      <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Pendiente: {formatCurrency((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0))}</p>
+                    )}
+                    {isMultipleLiquidation && (
+                      <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Total Seleccionado: {formatCurrency(parseFloat(paymentAmount || "0"))}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy) *</label>
@@ -2026,7 +2376,81 @@ export default function App() {
                   onClick={handleLiquidate}
                   className="w-full py-4 bg-[#0A0A0A] text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors mt-2"
                 >
-                  Confirmar Liquidación
+                  Confirmar Liquidación {isMultipleLiquidation ? "Múltiple" : "Simple"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isBatchLiquidating && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-sm w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/10"
+            >
+              <div className="p-6 bg-[#0A0A0A] text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
+                    <Layers size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight uppercase">Liquidación por Lotes</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">{selectedInvoicesForBatch.length} FACTURAS SELECCIONADAS</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsBatchLiquidating(false)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+              </div>
+              <div className="p-6 flex flex-col gap-6">
+                {liquidationError && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
+                    <AlertCircle size={14} />
+                    {liquidationError}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Total a Liquidar</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-30 text-sm">€</span>
+                      <input 
+                        type="text" 
+                        readOnly
+                        value={paymentAmount}
+                        className="w-full pl-8 pr-4 py-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-mono font-bold text-xl opacity-60 cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Se liquidará el importe pendiente de cada factura seleccionada.</p>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy) *</label>
+                    <input 
+                      type="text" 
+                      placeholder="DD/MM/YYYY o T"
+                      value={paymentDate}
+                      onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
+                      onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
+                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Nº Movimiento de Liquidación *</label>
+                    <input 
+                      type="text" 
+                      value={bankId}
+                      onChange={(e) => setBankId(e.target.value)}
+                      placeholder="Nº MOVIMIENTO..."
+                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all placeholder:opacity-20"
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={handleBatchLiquidate}
+                  className="w-full py-4 bg-[#0A0A0A] text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors mt-2"
+                >
+                  Confirmar Liquidación por Lotes
                 </button>
               </div>
             </motion.div>

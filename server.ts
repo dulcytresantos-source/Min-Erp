@@ -582,7 +582,7 @@ app.post("/api/payments", async (req, res) => {
 
     const { total_amount, total_paid } = invData.rows[0] as any;
     let status = "Partial";
-    if (total_paid >= total_amount) status = "Paid";
+    if (total_paid >= total_amount - 0.01) status = "Paid";
     
     await db.execute({
       sql: "UPDATE invoices SET status = ? WHERE id = ?",
@@ -590,6 +590,56 @@ app.post("/api/payments", async (req, res) => {
     });
 
     res.json({ success: true, status });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post("/api/payments/batch", async (req, res) => {
+  const { invoice_payments, payment_date, method, bank_movement_id } = req.body;
+  // invoice_payments is an array of { invoice_id: number, amount_paid: number }
+  try {
+    const statements = [];
+    
+    for (const p of invoice_payments) {
+      statements.push({
+        sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
+        args: [
+          p.invoice_id, 
+          payment_date ?? null, 
+          p.amount_paid, 
+          method ?? 'Transfer', 
+          bank_movement_id ?? null
+        ]
+      });
+    }
+    
+    await db.batch(statements, "write");
+
+    // Update statuses for all affected invoices
+    for (const p of invoice_payments) {
+      const invData = await db.execute({
+        sql: `
+          SELECT total_amount, 
+          (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE invoice_id = ?) as total_paid
+          FROM invoices WHERE id = ?
+        `,
+        args: [p.invoice_id, p.invoice_id],
+      });
+
+      if (invData.rows.length > 0) {
+        const { total_amount, total_paid } = invData.rows[0] as any;
+        let status = "Partial";
+        if (total_paid >= total_amount - 0.01) status = "Paid";
+        
+        await db.execute({
+          sql: "UPDATE invoices SET status = ? WHERE id = ?",
+          args: [status, p.invoice_id],
+        });
+      }
+    }
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
