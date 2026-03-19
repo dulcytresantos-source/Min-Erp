@@ -493,6 +493,23 @@ export default function App() {
     }
   };
 
+  const handleUpdateAlias = async (id: string, newAlias: string) => {
+    if (!activeCompanyId) return;
+    try {
+      const res = await fetch(`/api/suppliers/${id}?companyId=${activeCompanyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alias: newAlias })
+      });
+      if (res.ok) {
+        setSelectedSupplier(prev => prev ? { ...prev, alias: newAlias } : null);
+        setSuppliers(prev => prev.map(s => s.id === id ? { ...s, alias: newAlias } : s));
+      }
+    } catch (error) {
+      console.error("Error updating supplier alias:", error);
+    }
+  };
+
   const fetchAllMovements = async () => {
     if (!activeCompanyId) return;
     try {
@@ -590,9 +607,11 @@ export default function App() {
         const parsed = await parseInvoice(base64, file.type);
         
         // Extract DOC from filename if possible (e.g., "02-FC21 IBM 233,44€")
-        // User says: "02-FC21 IBM 233,44€...por tanto , el DOC es 02-FC21"
         const docMatch = file.name.match(/^([A-Z0-9-]+)\s/i);
         const docId = docMatch ? docMatch[1] : undefined;
+        if (docId) {
+          addLogEntry('INFO', `${file.name}: DOC ID extraído del nombre: ${docId}`);
+        }
 
         // Validation for specific supplier dropzone
         if (targetSupplier && parsed.cif !== targetSupplier.cif) {
@@ -819,8 +838,8 @@ export default function App() {
       <aside className="w-64 bg-white border-r border-[#0A0A0A]/10 flex flex-col sticky top-0 h-screen z-40">
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 bg-emerald-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-emerald-600">DocLedger <span className="opacity-30 font-medium">v5.1</span></h1>
+            <div className="w-8 h-8 bg-violet-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-violet-600">DocLedger <span className="opacity-30 font-medium">v5.3</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -857,7 +876,7 @@ export default function App() {
             onClick={() => setView('upload')}
             className={cn(
               "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'upload' ? "bg-green-600 text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
+              view === 'upload' ? "bg-violet-600 text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
             )}
           >
             <Upload size={14} />
@@ -964,7 +983,7 @@ export default function App() {
                   <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Gestión de Compañías</label>
                   <button 
                     onClick={() => setIsAddingCompany(!isAddingCompany)}
-                    className="text-[9px] font-bold uppercase tracking-widest bg-green-600 text-white px-2 py-1 rounded-sm hover:opacity-80 transition-opacity"
+                    className="text-[9px] font-bold uppercase tracking-widest bg-violet-600 text-white px-2 py-1 rounded-sm hover:opacity-80 transition-opacity"
                   >
                     {isAddingCompany ? "Cancelar" : "Nueva"}
                   </button>
@@ -1197,7 +1216,11 @@ export default function App() {
                     <div className="flex flex-col gap-3">
                       <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                         <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Alias . . . . . . . . . .</label>
-                        <input readOnly value={selectedSupplier.alias || "PROVEEDOR"} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-bold text-[11px] uppercase tracking-tight" />
+                        <input 
+                          value={selectedSupplier.alias || ""} 
+                          onChange={(e) => handleUpdateAlias(selectedSupplier.id, e.target.value)}
+                          className="px-2 py-1.5 bg-white border border-[#0A0A0A]/10 rounded-sm outline-none font-bold text-[11px] uppercase tracking-tight focus:ring-1 focus:ring-violet-600/20" 
+                        />
                       </div>
                       <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                         <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Saldo (DL) . . . . . .</label>

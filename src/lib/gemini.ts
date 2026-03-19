@@ -1,35 +1,36 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 export async function parseInvoice(base64Data: string, mimeType: string) {
-  // Try both VITE_API_KEY and VITE_GEMINI_API_KEY for compatibility
-  const apiKey = (import.meta as any).env?.VITE_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  // Use the standard process.env.GEMINI_API_KEY as per AI Studio guidelines
+  const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("Falta VITE_API_KEY en Vercel (Settings → Environment Variables).");
+    throw new Error("Falta la API Key de Gemini. Por favor, configúrala en los Secrets de AI Studio como GEMINI_API_KEY.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
 
   try {
     const model = "gemini-3-flash-preview";
-    const prompt = `Extract the following information from this invoice:
-    - Supplier Name
-    - CIF/NIF (Tax ID) of the supplier
-    - Invoice Number
-    - Issue Date (in YYYY-MM-DD format)
-    - Due Date (in YYYY-MM-DD format)
-    - Tax Base (Base Imponible)
-    - VAT Amount (IVA)
-    - Total Amount (as a number)
-    - Supplier Address
-    - Supplier Email
-    - Supplier Phone
-    - Supplier City
-    - Supplier Zip Code
-    - Supplier Province
-    - Supplier Alias (short name)
+    const prompt = `Analiza esta factura y extrae la siguiente información en español:
+    - Nombre del Proveedor (Supplier Name)
+    - CIF/NIF del proveedor (Tax ID)
+    - Número de Factura (Invoice Number)
+    - Fecha de Emisión (Issue Date) en formato YYYY-MM-DD
+    - Fecha de Vencimiento (Due Date) en formato YYYY-MM-DD
+    - Base Imponible (Tax Base) - solo el número
+    - Cuota de IVA (VAT Amount) - solo el número
+    - Importe Total (Total Amount) - solo el número
+    - Dirección del Proveedor
+    - Email del Proveedor
+    - Teléfono del Proveedor
+    - Ciudad del Proveedor
+    - Código Postal del Proveedor
+    - Provincia del Proveedor
+    - Alias del Proveedor (un nombre corto o comercial)
     
-    Return the data in JSON format.`;
+    Asegúrate de que los importes sean números válidos. Si no encuentras algún campo, deja el valor como null o string vacío según corresponda.
+    Devuelve los datos estrictamente en formato JSON.`;
 
     const response = await ai.models.generateContent({
       model,

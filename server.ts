@@ -427,6 +427,20 @@ app.get("/api/suppliers/:id", async (req, res) => {
   }
 });
 
+app.patch("/api/suppliers/:id", async (req, res) => {
+  const { alias } = req.body;
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    await db.execute({
+      sql: "UPDATE suppliers SET alias = ? WHERE id = ? AND company_id = ?",
+      args: [alias ?? null, req.params.id ?? null, companyId],
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.get("/api/movements/all", async (req, res) => {
   const companyId = (req.query.companyId as string) ?? null;
   try {
