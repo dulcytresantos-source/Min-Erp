@@ -383,40 +383,39 @@ export default function App() {
   const [exportConsoleData, setExportConsoleData] = useState<string | null>(null);
 
   const [supplierColumns, setSupplierColumns] = useState([
-    { id: 'id', label: 'Nº Prov.', width: '100px' },
-    { id: 'alias', label: 'Alias', width: '120px' },
-    { id: 'name', label: 'Nombre Fiscal', width: '1fr' },
-    { id: 'cif', label: 'CIF/NIF', width: '120px' },
-    { id: 'city', label: 'Población', width: '140px' },
-    { id: 'pending_balance', label: 'Saldo (EUR)', width: '120px' },
+    { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
+    { id: 'name', label: 'Nombre / Alias', width: '1fr', sortKey: 'name' },
+    { id: 'cif', label: 'CIF/NIF', width: '120px', sortKey: 'cif' },
+    { id: 'city', label: 'Población', width: '140px', sortKey: 'city' },
+    { id: 'pending_balance', label: 'Saldo (EUR)', width: '120px', sortKey: 'pending_balance' },
   ]);
 
   const [movementColumns, setMovementColumns] = useState([
-    { id: 'date', label: 'Fecha', width: '100px' },
-    { id: 'doc_id', label: 'DOC (Int)', width: '100px' },
-    { id: 'type', label: 'Tipo', width: '100px' },
-    { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr' },
-    { id: 'amount', label: 'Imp. Inicial', width: '100px' },
-    { id: 'pending', label: 'Imp. Pdte.', width: '100px' },
-    { id: 'status', label: 'Estado', width: '100px' },
-    { id: 'payments', label: 'Liqs.', width: '60px' },
+    { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
+    { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
+    { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
+    { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr', sortKey: 'supplier_name' },
+    { id: 'amount', label: 'Imp. Inicial', width: '100px', sortKey: 'amount' },
+    { id: 'pending', label: 'Imp. Pdte.', width: '100px', sortKey: 'pending' },
+    { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
+    { id: 'payments', label: 'Liqs.', width: '60px', sortKey: 'payments' },
   ]);
 
   const [historyColumns, setHistoryColumns] = useState([
-    { id: 'doc_id', label: 'DOC (Int)', width: 'auto' },
-    { id: 'doc_ext', label: 'DOCEXT (Ext)', width: 'auto' },
-    { id: 'supplier_name', label: 'Proveedor', width: 'auto' },
-    { id: 'issue_date', label: 'Fecha', width: 'auto' },
-    { id: 'concept', label: 'Concepto', width: 'auto' },
-    { id: 'total_amount', label: 'Total', width: 'auto' },
-    { id: 'status', label: 'Estado', width: 'auto' },
+    { id: 'doc_id', label: 'DOC (Int)', width: '140px', sortKey: 'doc_id' },
+    { id: 'doc_ext', label: 'DOCEXT (Ext)', width: '120px', sortKey: 'doc_ext' },
+    { id: 'supplier_name', label: 'Proveedor', width: '1.5fr', sortKey: 'supplier_name' },
+    { id: 'issue_date', label: 'Fecha', width: '100px', sortKey: 'issue_date' },
+    { id: 'concept', label: 'Concepto', width: '1fr', sortKey: 'concept' },
+    { id: 'total_amount', label: 'Total', width: '120px', sortKey: 'total_amount' },
+    { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
   ]);
 
   const [supplierInvoicesColumns, setSupplierInvoicesColumns] = useState([
-    { id: 'date', label: 'Fecha', width: '100px' },
-    { id: 'reference', label: 'Referencia', width: '1fr' },
-    { id: 'amount', label: 'Total', width: '100px' },
-    { id: 'pending', label: 'Pendiente', width: '100px' },
+    { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
+    { id: 'reference', label: 'Referencia', width: '1fr', sortKey: 'reference' },
+    { id: 'amount', label: 'Total', width: '100px', sortKey: 'amount' },
+    { id: 'pending', label: 'Pendiente', width: '100px', sortKey: 'pending' },
   ]);
 
   const sensors = useSensors(
