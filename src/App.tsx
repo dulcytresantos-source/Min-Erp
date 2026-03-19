@@ -258,6 +258,7 @@ export default function App() {
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', address: '', cif: '' });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'asc' });
   const [isDeletingCompany, setIsDeletingCompany] = useState<Company | null>(null);
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
@@ -826,11 +827,34 @@ export default function App() {
     }
   };
 
-  const filteredSuppliers = suppliers.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    s.cif.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const sortedSuppliers = useMemo(() => {
+    const filtered = suppliers.filter(s => 
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      s.cif.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.id.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return [...filtered].sort((a, b) => {
+      const key = sortConfig.key as keyof Supplier;
+      const aValue = a[key] ?? "";
+      const bValue = b[key] ?? "";
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [suppliers, searchQuery, sortConfig]);
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#0A0A0A] font-sans flex">
@@ -838,8 +862,8 @@ export default function App() {
       <aside className="w-64 bg-white border-r border-[#0A0A0A]/10 flex flex-col sticky top-0 h-screen z-40">
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 bg-violet-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-violet-600">DocLedger <span className="opacity-30 font-medium">v5.3</span></h1>
+            <div className="w-8 h-8 bg-rose-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-rose-600">DocLedger <span className="opacity-30 font-medium">v5.4</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -1085,16 +1109,28 @@ export default function App() {
                 {/* Technical Header */}
                 <div className="grid grid-cols-[40px_100px_120px_1fr_120px_140px_120px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
                   <div className="p-3 border-r border-[#0A0A0A]/5"></div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5">Nº Prov.</div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5">Alias</div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5">Nombre Fiscal</div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5">CIF/NIF</div>
-                  <div className="p-3 border-r border-[#0A0A0A]/5">Población</div>
-                  <div className="p-3 text-right">Saldo (EUR)</div>
+                  <button onClick={() => handleSort('id')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                    Nº Prov. {sortConfig.key === 'id' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
+                  <button onClick={() => handleSort('alias')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                    Alias {sortConfig.key === 'alias' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
+                  <button onClick={() => handleSort('name')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                    Nombre Fiscal {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
+                  <button onClick={() => handleSort('cif')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                    CIF/NIF {sortConfig.key === 'cif' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
+                  <button onClick={() => handleSort('city')} className="p-3 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
+                    Población {sortConfig.key === 'city' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
+                  <button onClick={() => handleSort('pending_balance')} className="p-3 text-right hover:bg-[#0A0A0A]/5 transition-colors flex items-center justify-end gap-1">
+                    Saldo (EUR) {sortConfig.key === 'pending_balance' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
+                  </button>
                 </div>
 
                 <div className="divide-y divide-[#0A0A0A]/5">
-                  {filteredSuppliers.map(s => (
+                  {sortedSuppliers.map(s => (
                     <button 
                       key={s.id}
                       onClick={() => {
@@ -1122,7 +1158,7 @@ export default function App() {
                   ))}
                 </div>
                 
-                {filteredSuppliers.length === 0 && (
+                {sortedSuppliers.length === 0 && (
                   <div className="p-20 text-center opacity-20 flex flex-col items-center">
                     <Search size={48} strokeWidth={1} className="mb-4" />
                     <p className="text-xs font-bold uppercase tracking-widest">No se han encontrado registros coincidentes</p>
