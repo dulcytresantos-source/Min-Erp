@@ -1,43 +1,81 @@
+import { GoogleGenAI, Type } from "@google/genai";
 
 export async function parseInvoice(base64Data: string, mimeType: string) {
+  // Try both VITE_API_KEY and VITE_GEMINI_API_KEY for compatibility
+  const apiKey = (import.meta as any).env?.VITE_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Falta VITE_API_KEY en Vercel (Settings → Environment Variables).");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
-    const response = await fetch("/api/parse-invoice", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const model = "gemini-3-flash-preview";
+    const prompt = `Extract the following information from this invoice:
+    - Supplier Name
+    - CIF/NIF (Tax ID) of the supplier
+    - Invoice Number
+    - Issue Date (in YYYY-MM-DD format)
+    - Due Date (in YYYY-MM-DD format)
+    - Tax Base (Base Imponible)
+    - VAT Amount (IVA)
+    - Total Amount (as a number)
+    - Supplier Address
+    - Supplier Email
+    - Supplier Phone
+    - Supplier City
+    - Supplier Zip Code
+    - Supplier Province
+    - Supplier Alias (short name)
+    
+    Return the data in JSON format.`;
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+              },
+            },
+            { text: prompt },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            supplierName: { type: Type.STRING },
+            cif: { type: Type.STRING },
+            invoiceNumber: { type: Type.STRING },
+            issueDate: { type: Type.STRING },
+            dueDate: { type: Type.STRING },
+            taxBase: { type: Type.NUMBER },
+            vat: { type: Type.NUMBER },
+            totalAmount: { type: Type.NUMBER },
+            address: { type: Type.STRING },
+            email: { type: Type.STRING },
+            phone: { type: Type.STRING },
+            city: { type: Type.STRING },
+            zipCode: { type: Type.STRING },
+            province: { type: Type.STRING },
+            alias: { type: Type.STRING },
+          },
+          required: ["supplierName", "cif", "totalAmount"],
+        },
       },
-      body: JSON.stringify({ base64Data, mimeType }),
     });
 
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || errorData.error || "Error al procesar la factura en el servidor");
-      } else {
-        const text = await response.text();
-        // If it's an HTML error page, extract the status text or first line
-        const errorMsg = text.includes("<title>") 
-          ? text.match(/<title>(.*?)<\/title>/)?.[1] || "Error del servidor (HTML)"
-          : text.slice(0, 100);
-        
-        if (response.status === 404) {
-          throw new Error("Error 404: La ruta /api/parse-invoice no fue encontrada. Verifica la configuración de Vercel.");
-        }
-        
-        throw new Error(`Error ${response.status}: ${errorMsg}`);
-      }
-    }
-
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      console.error("Failed to parse JSON response:", text);
-      throw new Error("El servidor devolvió una respuesta que no es JSON válido. Es posible que haya un error en la configuración de Vercel.");
-    }
+    const text = response.text || "{}";
+    return JSON.parse(text);
   } catch (error) {
-    console.error("Error calling parse-invoice API:", error);
+    console.error("Error parsing invoice with Gemini:", error);
     throw error;
   }
 }
