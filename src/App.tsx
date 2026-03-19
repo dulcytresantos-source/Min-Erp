@@ -540,7 +540,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`/api/companies/${isDeletingCompany.id}`, {
+      const res = await fetch(`/api/companies?id=${isDeletingCompany.id}`, {
         method: "DELETE"
       });
       if (res.ok) {
