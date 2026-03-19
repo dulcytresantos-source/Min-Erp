@@ -595,6 +595,61 @@ app.post("/api/payments", async (req, res) => {
   }
 });
 
+app.delete("/api/payments/:id", async (req, res) => {
+  const { id } = req.params;
+  console.log(`[DELETE] /api/payments/${id} called`);
+  try {
+    // Get invoice_id before deleting
+    const payment = await db.execute({
+      sql: "SELECT invoice_id FROM payments WHERE id = ?",
+      args: [id]
+    });
+
+    if (payment.rows.length === 0) {
+      console.log(`[DELETE] Payment ${id} not found`);
+      return res.status(404).json({ error: "Liquidación no encontrada" });
+    }
+
+    const invoiceId = payment.rows[0].invoice_id;
+    console.log(`[DELETE] Found invoice_id: ${invoiceId} for payment ${id}`);
+
+    await db.execute({
+      sql: "DELETE FROM payments WHERE id = ?",
+      args: [id]
+    });
+    console.log(`[DELETE] Payment ${id} deleted successfully`);
+
+    // Recalculate invoice status
+    const invData = await db.execute({
+      sql: `
+        SELECT total_amount, 
+        (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE invoice_id = ?) as total_paid
+        FROM invoices WHERE id = ?
+      `,
+      args: [invoiceId, invoiceId],
+    });
+
+    if (invData.rows.length > 0) {
+      const { total_amount, total_paid } = invData.rows[0] as any;
+      let status = "Pending";
+      if (total_paid > 0 && total_paid < total_amount) status = "Partial";
+      if (total_paid >= total_amount && total_amount > 0) status = "Paid";
+      
+      console.log(`[DELETE] Recalculated status for invoice ${invoiceId}: ${status} (paid: ${total_paid}, total: ${total_amount})`);
+
+      await db.execute({
+        sql: "UPDATE invoices SET status = ? WHERE id = ?",
+        args: [status, invoiceId],
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(`[DELETE] Error deleting payment ${id}:`, err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
