@@ -12,12 +12,12 @@ export async function parseInvoice(base64Data: string, mimeType: string) {
 
   try {
     const model = "gemini-3-flash-preview";
-    const prompt = `Analiza esta factura y extrae la siguiente información en español:
+    const prompt = `Analiza esta factura y extrae la siguiente información en español. Es MUY IMPORTANTE intentar localizar la Fecha de Vencimiento (Due Date), si no aparece explícitamente, busca términos como "Vencimiento", "Fecha límite de pago", "Pagar antes de", etc.:
     - Nombre del Proveedor (Supplier Name)
     - CIF/NIF del proveedor (Tax ID)
     - Número de Factura (Invoice Number)
     - Fecha de Emisión (Issue Date) en formato YYYY-MM-DD
-    - Fecha de Vencimiento (Due Date) en formato YYYY-MM-DD
+    - Fecha de Vencimiento (Due Date) en formato YYYY-MM-DD (SIEMPRE intenta extraerla)
     - Base Imponible (Tax Base) - solo el número
     - Cuota de IVA (VAT Amount) - solo el número
     - Importe Total (Total Amount) - solo el número

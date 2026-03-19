@@ -6,6 +6,7 @@ import {
   Building2, 
   Euro, 
   History, 
+  Check,
   CheckCircle2, 
   AlertCircle,
   ArrowLeft,
@@ -72,6 +73,7 @@ interface Supplier {
   cif: string;
   main_contact?: string;
   pending_balance: number;
+  is_generic?: number;
 }
 
 interface Company {
@@ -97,6 +99,7 @@ interface Invoice {
   paid_amount: number;
   supplier_name?: string;
   supplier_alias?: string;
+  concept?: string;
 }
 
 interface Movement {
@@ -283,6 +286,10 @@ export default function App() {
   const [isBatchLiquidating, setIsBatchLiquidating] = useState<boolean>(false);
   const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
+  const [useGenericInProposal, setUseGenericInProposal] = useState(false);
+  const [proposalConcept, setProposalConcept] = useState("");
+  const [editingInvoiceConceptId, setEditingInvoiceConceptId] = useState<number | null>(null);
+  const [editingConceptValue, setEditingConceptValue] = useState("");
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), "dd/MM/yyyy"));
   const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
@@ -438,6 +445,26 @@ export default function App() {
     } else {
       setMovementSortField(field);
       setMovementSortDirection('asc');
+    }
+  };
+
+  const handleUpdateInvoiceConcept = async (invoiceId: number, newConcept: string) => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concept: newConcept })
+      });
+
+      if (!res.ok) {
+        alert("Error al actualizar el concepto");
+        return;
+      }
+
+      setAllInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, concept: newConcept } : inv));
+      setEditingInvoiceConceptId(null);
+    } catch (err) {
+      console.error("Error updating invoice concept:", err);
     }
   };
 
@@ -691,13 +718,15 @@ export default function App() {
             continue;
           }
 
-          await createInvoice(existingSupplier.id, { ...parsed, docId });
+          await createInvoice(existingSupplier.id, { ...parsed, docId }, "Factura genérica");
           addLogEntry('SUCCESS', `${file.name}: Procesada correctamente para ${existingSupplier.name}`);
           if (selectedSupplier?.id === existingSupplier.id) {
             fetchSupplierDetails(existingSupplier.id);
           }
         } else {
           addLogEntry('INFO', `${file.name}: Proveedor nuevo detectado (${parsed.supplierName})`);
+          setUseGenericInProposal(false);
+          setProposalConcept("");
           setProposal({
             name: parsed.supplierName,
             alias: parsed.alias,
@@ -749,7 +778,7 @@ export default function App() {
     }
   };
 
-  const createInvoice = async (supplierId: string, data: any) => {
+  const createInvoice = async (supplierId: string, data: any, concept?: string) => {
     if (!activeCompanyId) return;
     const res = await fetch("/api/invoices", {
       method: "POST",
@@ -764,7 +793,8 @@ export default function App() {
         due_date: data.dueDate,
         tax_base: data.taxBase || 0,
         vat: data.vat || 0,
-        total_amount: data.totalAmount || 0
+        total_amount: data.totalAmount || 0,
+        concept: concept || "Factura genérica"
       })
     });
     
@@ -780,45 +810,91 @@ export default function App() {
     setUploadError(null);
 
     try {
-      const res = await fetch("/api/suppliers", {
-        method: "POST",
+      let supplierId = "";
+      let finalConcept = proposalConcept || "Factura genérica";
+
+      if (useGenericInProposal) {
+        // Find the generic supplier for this company
+        const genericSupplier = suppliers.find(s => s.is_generic && s.company_id === activeCompanyId);
+        if (!genericSupplier) {
+          throw new Error("No existe un proveedor genérico configurado para esta empresa. Por favor, marca uno en la ficha de proveedor.");
+        }
+        supplierId = genericSupplier.id;
+        if (!proposalConcept) finalConcept = "Gasto esporádico";
+      } else {
+        const res = await fetch("/api/suppliers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company_id: activeCompanyId,
+            name: proposal.name,
+            alias: proposal.alias,
+            cif: proposal.cif,
+            address: proposal.address,
+            city: proposal.city,
+            zip_code: proposal.zip_code,
+            province: proposal.province,
+            phone: proposal.phone,
+            email: proposal.email
+          })
+        });
+        
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Error al crear el proveedor");
+        }
+
+        const data = await res.json();
+        supplierId = data.id;
+      }
+      
+      await createInvoice(supplierId, proposal.invoiceData, finalConcept);
+      setProposal(null);
+      setUseGenericInProposal(false);
+      setProposalConcept("");
+      await fetchData();
+      
+      if (!useGenericInProposal) {
+        // Navigate to the new supplier detail view
+        const sRes = await fetch(`/api/suppliers/${supplierId}?companyId=${activeCompanyId}`);
+        const sData = await sRes.json();
+        setSelectedSupplier(sData);
+        setView('supplier-detail');
+        fetchSupplierDetails(supplierId);
+      }
+    } catch (err) {
+      console.error("Error in handleCreateSupplier:", err);
+      setUploadError(err instanceof Error ? err.message : "Error al procesar la solicitud");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleToggleGeneric = async (supplierId: string, currentValue: boolean) => {
+    if (!activeCompanyId) return;
+    try {
+      const res = await fetch(`/api/suppliers/${supplierId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_id: activeCompanyId,
-          name: proposal.name,
-          alias: proposal.alias,
-          cif: proposal.cif,
-          address: proposal.address,
-          city: proposal.city,
-          zip_code: proposal.zip_code,
-          province: proposal.province,
-          phone: proposal.phone,
-          email: proposal.email
+          is_generic: !currentValue ? 1 : 0
         })
       });
-      
+
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Error al crear el proveedor");
+        const data = await res.json();
+        alert(data.error || "Error al actualizar el proveedor");
+        return;
       }
 
-      const { id } = await res.json();
-      
-      await createInvoice(id, proposal.invoiceData);
-      setProposal(null);
       await fetchData();
-      
-      // Navigate to the new supplier detail view
-      const sRes = await fetch(`/api/suppliers/${id}?companyId=${activeCompanyId}`);
-      const sData = await sRes.json();
-      setSelectedSupplier(sData);
-      setView('supplier-detail');
-      fetchSupplierDetails(id);
+      // Update selected supplier if we are in detail view
+      if (selectedSupplier && selectedSupplier.id === supplierId) {
+        setSelectedSupplier({ ...selectedSupplier, is_generic: !currentValue ? 1 : 0 });
+      }
     } catch (err) {
-      console.error("Error in handleCreateSupplier:", err);
-      setUploadError(err instanceof Error ? err.message : "Error al crear el proveedor");
-    } finally {
-      setIsUploading(false);
+      console.error("Error toggling generic status:", err);
     }
   };
 
@@ -1151,7 +1227,7 @@ export default function App() {
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 bg-indigo-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.2</span></h1>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.3</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -1534,6 +1610,21 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">CIF/NIF. . . . . . . . .</label>
                           <input readOnly value={selectedSupplier.cif} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4 mt-2">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Prov. Genérico . . .</label>
+                          <button 
+                            onClick={() => handleToggleGeneric(selectedSupplier.id, !!selectedSupplier.is_generic)}
+                            className={cn(
+                              "w-fit px-3 py-1 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all flex items-center gap-2",
+                              selectedSupplier.is_generic 
+                                ? "bg-violet-600 text-white" 
+                                : "bg-[#F5F5F4] text-[#0A0A0A]/40 hover:bg-[#E4E3E0]"
+                            )}
+                          >
+                            <div className={cn("w-1.5 h-1.5 rounded-full", selectedSupplier.is_generic ? "bg-white" : "bg-[#0A0A0A]/20")} />
+                            {selectedSupplier.is_generic ? "Activado" : "Desactivado"}
+                          </button>
                         </div>
                       </div>
 
@@ -1993,6 +2084,7 @@ export default function App() {
                         >
                           Fecha <SortIcon field="issue_date" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
+                        <th className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5">Concepto</th>
                         <th 
                           onClick={() => handleInvoiceSort('total_amount')}
                           className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
@@ -2029,6 +2121,32 @@ export default function App() {
                             </button>
                           </td>
                           <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
+                          <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px]">
+                            {editingInvoiceConceptId === inv.id ? (
+                              <input 
+                                autoFocus
+                                value={editingConceptValue}
+                                onChange={(e) => setEditingConceptValue(e.target.value)}
+                                onBlur={() => handleUpdateInvoiceConcept(inv.id, editingConceptValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateInvoiceConcept(inv.id, editingConceptValue);
+                                  if (e.key === 'Escape') setEditingInvoiceConceptId(null);
+                                }}
+                                className="w-full px-2 py-1 bg-[#F5F5F4] rounded-sm border-none outline-none font-medium"
+                              />
+                            ) : (
+                              <div 
+                                onClick={() => {
+                                  setEditingInvoiceConceptId(inv.id);
+                                  setEditingConceptValue(inv.concept || "");
+                                }}
+                                className="cursor-pointer hover:bg-[#0A0A0A]/5 px-1 py-0.5 rounded-sm transition-colors truncate max-w-[200px]"
+                                title={inv.concept || "Sin concepto"}
+                              >
+                                {inv.concept || <span className="opacity-30 italic">Sin concepto</span>}
+                              </div>
+                            )}
+                          </td>
                           <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
                           <td className="p-1 text-center">
                             <span className={cn(
@@ -2202,6 +2320,38 @@ export default function App() {
                       onChange={(e) => setProposal({...proposal, email: e.target.value})}
                       className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none"
                     />
+                  </div>
+                  
+                  <div className="pt-4 border-t border-black/5 flex flex-col gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div 
+                        onClick={() => setUseGenericInProposal(!useGenericInProposal)}
+                        className={cn(
+                          "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                          useGenericInProposal ? "bg-[#0A0A0A] border-[#0A0A0A]" : "border-[#0A0A0A]/10 group-hover:border-[#0A0A0A]/30"
+                        )}
+                      >
+                        {useGenericInProposal && <Check size={14} className="text-white" />}
+                      </div>
+                      <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-opacity">Asociar a Proveedor Genérico</span>
+                    </label>
+
+                    {useGenericInProposal && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-[#F5F5F4] p-4 rounded-2xl"
+                      >
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Concepto del Gasto</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ej: Comida cliente X, Material oficina..."
+                          value={proposalConcept}
+                          onChange={(e) => setProposalConcept(e.target.value)}
+                          className="w-full px-4 py-3 bg-white rounded-xl border-none outline-none font-medium shadow-sm"
+                        />
+                      </motion.div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-3 mt-4">

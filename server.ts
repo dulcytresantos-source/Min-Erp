@@ -56,6 +56,7 @@ async function initDb() {
         phone TEXT,
         email TEXT,
         main_contact TEXT,
+        is_generic INTEGER DEFAULT 0,
         FOREIGN KEY (company_id) REFERENCES companies (id)
       )
     `);
@@ -63,9 +64,12 @@ async function initDb() {
     // Migration: Ensure company_id exists in suppliers
     try {
       await db.execute("ALTER TABLE suppliers ADD COLUMN company_id INTEGER REFERENCES companies(id)");
-    } catch (e) {
-      // Column might already exist
-    }
+    } catch (e) {}
+    
+    // Migration: Ensure is_generic exists in suppliers
+    try {
+      await db.execute("ALTER TABLE suppliers ADD COLUMN is_generic INTEGER DEFAULT 0");
+    } catch (e) {}
 
     // Migration: Remove global unique constraint on CIF if it exists as an index
     // and create a per-company unique index
@@ -107,10 +111,16 @@ async function initDb() {
         vat REAL DEFAULT 0,
         total_amount REAL NOT NULL,
         status TEXT DEFAULT 'Pending',
+        concept TEXT,
         FOREIGN KEY (company_id) REFERENCES companies (id),
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
       )
     `);
+
+    // Migration: Ensure concept exists in invoices
+    try {
+      await db.execute("ALTER TABLE invoices ADD COLUMN concept TEXT");
+    } catch (e) {}
 
     // Migration: Remove global unique constraint on doc_id in invoices
     try {
@@ -428,13 +438,38 @@ app.get("/api/suppliers/:id", async (req, res) => {
 });
 
 app.patch("/api/suppliers/:id", async (req, res) => {
-  const { alias } = req.body;
+  const { alias, is_generic } = req.body;
   const companyId = (req.query.companyId as string) ?? null;
   try {
-    await db.execute({
-      sql: "UPDATE suppliers SET alias = ? WHERE id = ? AND company_id = ?",
-      args: [alias ?? null, req.params.id ?? null, companyId],
-    });
+    if (is_generic === 1) {
+      // Check if another generic supplier exists for this company
+      const existingGeneric = await db.execute({
+        sql: "SELECT name FROM suppliers WHERE is_generic = 1 AND company_id = ? AND id != ?",
+        args: [companyId, req.params.id],
+      });
+      if (existingGeneric.rows.length > 0) {
+        return res.status(400).json({ error: `Ya existe un proveedor genérico para esta compañía: ${existingGeneric.rows[0].name}` });
+      }
+    }
+
+    const updates = [];
+    const args = [];
+    if (alias !== undefined) {
+      updates.push("alias = ?");
+      args.push(alias);
+    }
+    if (is_generic !== undefined) {
+      updates.push("is_generic = ?");
+      args.push(is_generic);
+    }
+    
+    if (updates.length > 0) {
+      args.push(req.params.id, companyId);
+      await db.execute({
+        sql: `UPDATE suppliers SET ${updates.join(", ")} WHERE id = ? AND company_id = ?`,
+        args,
+      });
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -510,7 +545,7 @@ app.get("/api/suppliers/:id/movements", async (req, res) => {
 });
 
 app.post("/api/invoices", async (req, res) => {
-  const { company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount } = req.body;
+  const { company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount, concept } = req.body;
   try {
     // Global duplicate check for internal DOC ID (doc_id)
     if (doc_id) {
@@ -534,7 +569,7 @@ app.post("/api/invoices", async (req, res) => {
     }
 
     const result = await db.execute({
-      sql: "INSERT INTO invoices (company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      sql: "INSERT INTO invoices (company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount, concept) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       args: [
         company_id ?? null, 
         supplier_id ?? null, 
@@ -545,10 +580,24 @@ app.post("/api/invoices", async (req, res) => {
         due_date ?? null, 
         tax_base ?? 0, 
         vat ?? 0, 
-        total_amount ?? null
+        total_amount ?? null,
+        concept ?? "Factura genérica"
       ],
     });
     res.json({ id: Number(result.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch("/api/invoices/:id", async (req, res) => {
+  const { concept } = req.body;
+  try {
+    await db.execute({
+      sql: "UPDATE invoices SET concept = ? WHERE id = ?",
+      args: [concept ?? null, req.params.id],
+    });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
