@@ -819,8 +819,8 @@ export default function App() {
       <aside className="w-64 bg-white border-r border-[#0A0A0A]/10 flex flex-col sticky top-0 h-screen z-40">
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 bg-blue-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-blue-600">DocLedger <span className="opacity-30 font-medium">v5.0</span></h1>
+            <div className="w-8 h-8 bg-emerald-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-emerald-600">DocLedger <span className="opacity-30 font-medium">v5.1</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
