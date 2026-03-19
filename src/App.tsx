@@ -126,7 +126,7 @@ const formatDate = (dateStr: string) => {
   if (!dateStr) return "";
   try {
     const date = new Date(dateStr);
-    return format(date, "dd-MM-yy");
+    return format(date, "dd/MM/yyyy");
   } catch (e) {
     return dateStr;
   }
@@ -248,7 +248,7 @@ export default function App() {
   const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), "dd/MM/yyyy"));
   const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
   const [bankId, setBankId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -787,40 +787,47 @@ export default function App() {
 
   const smartFormatDate = (value: string): string => {
     const v = value.trim().toUpperCase();
-    if (v === 'T') return systemDate;
+    let normalized = "";
     
-    // If it's already YYYY-MM-DD and valid, return it
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-    
-    const [sysYear, sysMonth, sysDay] = systemDate.split('-');
-    
-    // Split by / or -
-    const parts = v.split(/[\/\-]/);
-    
-    if (parts.length === 1 && parts[0].length > 0 && parts[0].length <= 2) {
-      // Just day: DD -> YYYY-MM-DD
-      const d = parts[0].padStart(2, '0');
-      return `${sysYear}-${sysMonth}-${d}`;
-    } else if (parts.length === 2) {
-      // Day and Month: DD/MM -> YYYY-MM-DD
-      const d = parts[0].padStart(2, '0');
-      const m = parts[1].padStart(2, '0');
-      return `${sysYear}-${m}-${d}`;
-    } else if (parts.length === 3) {
-      // Day, Month, Year: DD/MM/YY or DD/MM/YYYY -> YYYY-MM-DD
-      const d = parts[0].padStart(2, '0');
-      const m = parts[1].padStart(2, '0');
-      let y = parts[2];
-      if (y.length === 2) y = `20${y}`;
-      return `${y}-${m}-${d}`;
+    if (v === 'T') {
+      normalized = systemDate;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      normalized = v;
+    } else {
+      const [sysYear, sysMonth, sysDay] = systemDate.split('-');
+      const parts = v.split(/[\/\-]/);
+      
+      if (parts.length === 1 && parts[0].length > 0 && parts[0].length <= 2) {
+        const d = parts[0].padStart(2, '0');
+        normalized = `${sysYear}-${sysMonth}-${d}`;
+      } else if (parts.length === 2) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        normalized = `${sysYear}-${m}-${d}`;
+      } else if (parts.length === 3) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        let y = parts[2];
+        if (y.length === 2) y = `20${y}`;
+        normalized = `${y}-${m}-${d}`;
+      } else {
+        return value;
+      }
     }
+    
+    try {
+      const date = new Date(normalized);
+      if (!isNaN(date.getTime())) {
+        return format(date, "dd/MM/yyyy");
+      }
+    } catch (e) {}
     
     return value;
   };
 
   const handleDateInput = (value: string, setter: (val: string) => void) => {
     if (value.toUpperCase() === 'T') {
-      setter(systemDate);
+      setter(format(new Date(systemDate), "dd/MM/yyyy"));
       return;
     }
     setter(value);
@@ -829,7 +836,17 @@ export default function App() {
   const handleLiquidate = async () => {
     if (!isLiquidating) return;
 
-    const formattedDate = smartFormatDate(paymentDate);
+    const displayDate = smartFormatDate(paymentDate);
+    // Convert DD/MM/YYYY to YYYY-MM-DD for API
+    let formattedDate = "";
+    if (displayDate.includes('/')) {
+      const parts = displayDate.split('/');
+      if (parts.length === 3) {
+        formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(displayDate)) {
+      formattedDate = displayDate;
+    }
     
     if (!formattedDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
       setLiquidationError("Fecha de pago no válida (Use DD/MM/YYYY o T)");
