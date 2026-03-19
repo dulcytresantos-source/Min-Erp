@@ -25,7 +25,9 @@ import {
   Settings,
   Trash2,
   Download,
-  Layers
+  Layers,
+  Terminal,
+  Copy
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { clsx, type ClassValue } from "clsx";
@@ -298,6 +300,7 @@ export default function App() {
   const [isDeletingCompany, setIsDeletingCompany] = useState<Company | null>(null);
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
+  const [exportConsoleData, setExportConsoleData] = useState<string | null>(null);
 
   const [movementSortField, setMovementSortField] = useState<string | null>('date');
   const [movementSortDirection, setMovementSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -1098,7 +1101,18 @@ export default function App() {
       "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
     }));
     
-    exportToTSV(dataToExport, `historico_facturas_${format(new Date(), "yyyyMMdd")}`);
+    if (dataToExport.length === 0) return;
+    
+    const headers = Object.keys(dataToExport[0]).join("\t");
+    const rows = dataToExport.map(row => 
+      Object.values(row).map(value => {
+        const strValue = String(value);
+        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
+      }).join("\t")
+    );
+    
+    const tsvContent = [headers, ...rows].join("\n");
+    setExportConsoleData(tsvContent);
   };
 
   const sortedSuppliers = useMemo(() => {
@@ -1137,7 +1151,7 @@ export default function App() {
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 bg-indigo-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v5.8</span></h1>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.0</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -2500,6 +2514,48 @@ export default function App() {
                     Eliminar
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {exportConsoleData && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/90 backdrop-blur-sm flex items-center justify-center p-6 z-[70]">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#1A1A1A] rounded-sm w-full max-w-4xl h-[80vh] shadow-2xl overflow-hidden border border-white/10 flex flex-col"
+            >
+              <div className="p-4 bg-[#0A0A0A] text-white flex justify-between items-center border-b border-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-emerald-600 rounded-sm flex items-center justify-center">
+                    <Terminal size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold tracking-widest uppercase">Export Console (TSV)</h3>
+                    <p className="text-[8px] opacity-40 uppercase tracking-[0.2em] font-bold">Listo para copiar y pegar en Excel</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(exportConsoleData);
+                      alert("Datos copiados al portapapeles");
+                    }}
+                    className="px-4 py-1.5 bg-emerald-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
+                  >
+                    <Copy size={12} />
+                    Copiar Todo
+                  </button>
+                  <button onClick={() => setExportConsoleData(null)} className="p-1.5 opacity-40 hover:opacity-100 transition-opacity text-white"><X size={20} /></button>
+                </div>
+              </div>
+              <div className="flex-1 p-6 overflow-auto font-mono text-[10px] text-emerald-500/80 leading-relaxed whitespace-pre bg-[#0A0A0A]">
+                {exportConsoleData}
+              </div>
+              <div className="p-3 bg-[#0A0A0A] border-t border-white/5 text-center">
+                <p className="text-[8px] text-white/20 font-bold uppercase tracking-[0.3em]">Selecciona el texto, copia (Ctrl+C) y pega en Excel</p>
               </div>
             </motion.div>
           </div>

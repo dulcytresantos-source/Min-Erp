@@ -1,5 +1,5 @@
 {
   "name": "InvoiceFlow",
-  "description": "A comprehensive system for managing received invoices, supplier balances, and bank movement liquidations using AI-powered invoice parsing.",
+  "description": "A comprehensive system for managing received invoices, supplier balances, and bank movement liquidations using AI-powered invoice parsing. Version v6.0.",
   "requestFramePermissions": []
 }
