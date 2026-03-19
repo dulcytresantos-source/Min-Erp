@@ -1601,6 +1601,12 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
+                  {sortedSuppliers.length} proveedores encontrados
+                </div>
+              </div>
+
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
                 {/* Technical Header */}
                 <DndContext 
@@ -1981,6 +1987,12 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
+                  {groupedInvoices.length} movimientos encontrados
+                </div>
+              </div>
+
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
                 <DndContext 
                   sensors={sensors}
@@ -2223,6 +2235,12 @@ export default function App() {
                     <Download size={14} />
                     Exportar TSV
                   </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
+                  {filteredAndSortedInvoices.length} registros encontrados
                 </div>
               </div>
 
