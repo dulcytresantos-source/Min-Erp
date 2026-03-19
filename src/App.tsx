@@ -28,9 +28,30 @@ import {
   Download,
   Layers,
   Terminal,
-  Copy
+  Copy,
+  GripVertical,
+  MoveHorizontal
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format } from "date-fns";
@@ -259,6 +280,58 @@ const exportToTSV = (data: any[], filename: string) => {
   document.body.removeChild(link);
 };
 
+const getGridTemplate = (columns: any[], fixedStart?: string, fixedEnd?: string) => {
+  const widths = columns.map(col => col.width);
+  return `${fixedStart ? `${fixedStart} ` : ''}${widths.join(' ')}${fixedEnd ? ` ${fixedEnd}` : ''}`;
+};
+
+const getSupplierGridTemplate = (columns: any[]) => getGridTemplate(columns, '40px');
+const getMovementGridTemplate = (columns: any[]) => getGridTemplate(columns, undefined, '40px');
+const getHistoryGridTemplate = (columns: any[]) => getGridTemplate(columns);
+const getSupplierInvoicesGridTemplate = (columns: any[]) => getGridTemplate(columns, '40px');
+
+function SortableHeader({ id, label, sortKey, sortConfig, onSort, isLast }: any) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className={cn(
+        "p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1 cursor-move select-none group/header",
+        isLast && "border-r-0"
+      )}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="flex-1 flex items-center gap-1 truncate" onClick={(e) => {
+        e.stopPropagation();
+        if (onSort) onSort(sortKey || id);
+      }}>
+        <span className="truncate">{label}</span>
+        {sortConfig && sortConfig.key === (sortKey || id) && (
+          sortConfig.direction === 'asc' ? <ArrowUp size={8} className="shrink-0" /> : <ArrowDown size={8} className="shrink-0" />
+        )}
+      </div>
+      <GripVertical size={10} className="opacity-0 group-hover/header:opacity-20 shrink-0" />
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements'>('suppliers');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -309,6 +382,65 @@ export default function App() {
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [exportConsoleData, setExportConsoleData] = useState<string | null>(null);
 
+  const [supplierColumns, setSupplierColumns] = useState([
+    { id: 'id', label: 'Nº Prov.', width: '100px' },
+    { id: 'alias', label: 'Alias', width: '120px' },
+    { id: 'name', label: 'Nombre Fiscal', width: '1fr' },
+    { id: 'cif', label: 'CIF/NIF', width: '120px' },
+    { id: 'city', label: 'Población', width: '140px' },
+    { id: 'pending_balance', label: 'Saldo (EUR)', width: '120px' },
+  ]);
+
+  const [movementColumns, setMovementColumns] = useState([
+    { id: 'date', label: 'Fecha', width: '100px' },
+    { id: 'doc_id', label: 'DOC (Int)', width: '100px' },
+    { id: 'type', label: 'Tipo', width: '100px' },
+    { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr' },
+    { id: 'amount', label: 'Imp. Inicial', width: '100px' },
+    { id: 'pending', label: 'Imp. Pdte.', width: '100px' },
+    { id: 'status', label: 'Estado', width: '100px' },
+    { id: 'payments', label: 'Liqs.', width: '60px' },
+  ]);
+
+  const [historyColumns, setHistoryColumns] = useState([
+    { id: 'doc_id', label: 'DOC (Int)', width: 'auto' },
+    { id: 'doc_ext', label: 'DOCEXT (Ext)', width: 'auto' },
+    { id: 'supplier_name', label: 'Proveedor', width: 'auto' },
+    { id: 'issue_date', label: 'Fecha', width: 'auto' },
+    { id: 'concept', label: 'Concepto', width: 'auto' },
+    { id: 'total_amount', label: 'Total', width: 'auto' },
+    { id: 'status', label: 'Estado', width: 'auto' },
+  ]);
+
+  const [supplierInvoicesColumns, setSupplierInvoicesColumns] = useState([
+    { id: 'date', label: 'Fecha', width: '100px' },
+    { id: 'reference', label: 'Referencia', width: '1fr' },
+    { id: 'amount', label: 'Total', width: '100px' },
+    { id: 'pending', label: 'Pendiente', width: '100px' },
+  ]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: any, setColumns: any) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setColumns((items: any) => {
+        const oldIndex = items.findIndex((i: any) => i.id === active.id);
+        const newIndex = items.findIndex((i: any) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
   const [movementSortField, setMovementSortField] = useState<string | null>('date');
   const [movementSortDirection, setMovementSortDirection] = useState<'asc' | 'desc'>('desc');
   const [movementTypeFilter, setMovementTypeFilter] = useState<string>("All");
@@ -348,7 +480,8 @@ export default function App() {
         inv.invoice_number.toLowerCase().includes(q) ||
         inv.doc_id?.toLowerCase().includes(q) ||
         inv.doc_ext?.toLowerCase().includes(q) ||
-        inv.supplier_name?.toLowerCase().includes(q)
+        inv.supplier_name?.toLowerCase().includes(q) ||
+        inv.concept?.toLowerCase().includes(q)
       );
     }
 
@@ -1227,7 +1360,7 @@ export default function App() {
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 bg-indigo-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.3</span></h1>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.5</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -1471,27 +1604,31 @@ export default function App() {
 
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
                 {/* Technical Header */}
-                <div className="grid grid-cols-[40px_100px_120px_1fr_120px_140px_120px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
-                  <div className="p-1.5 border-r border-[#0A0A0A]/5"></div>
-                  <button onClick={() => handleSort('id')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
-                    Nº Prov. {sortConfig.key === 'id' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                  <button onClick={() => handleSort('alias')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
-                    Alias {sortConfig.key === 'alias' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                  <button onClick={() => handleSort('name')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
-                    Nombre Fiscal {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                  <button onClick={() => handleSort('cif')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
-                    CIF/NIF {sortConfig.key === 'cif' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                  <button onClick={() => handleSort('city')} className="p-1.5 border-r border-[#0A0A0A]/5 text-left hover:bg-[#0A0A0A]/5 transition-colors flex items-center gap-1">
-                    Población {sortConfig.key === 'city' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                  <button onClick={() => handleSort('pending_balance')} className="p-1.5 text-right hover:bg-[#0A0A0A]/5 transition-colors flex items-center justify-end gap-1">
-                    Saldo (EUR) {sortConfig.key === 'pending_balance' && (sortConfig.direction === 'asc' ? <ArrowUp size={8} /> : <ArrowDown size={8} />)}
-                  </button>
-                </div>
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setSupplierColumns)}
+                >
+                  <div 
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getSupplierGridTemplate(supplierColumns) }}
+                  >
+                    <div className="p-1.5 border-r border-[#0A0A0A]/5"></div>
+                    <SortableContext items={supplierColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {supplierColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={sortConfig}
+                          onSort={handleSort}
+                          isLast={idx === supplierColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
 
                 <div className="divide-y divide-[#0A0A0A]/5">
                   {sortedSuppliers.map(s => (
@@ -1502,22 +1639,32 @@ export default function App() {
                         fetchSupplierDetails(s.id);
                         setView('supplier-detail');
                       }}
-                      className="grid grid-cols-[40px_100px_120px_1fr_120px_140px_120px] w-full text-left hover:bg-[#0A0A0A] hover:text-white transition-colors group"
+                      className="grid w-full text-left hover:bg-[#0A0A0A] hover:text-white transition-colors group"
+                      style={{ gridTemplateColumns: getSupplierGridTemplate(supplierColumns) }}
                     >
                       <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center opacity-0 group-hover:opacity-100">
                         <ChevronRight size={14} />
                       </div>
-                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.id}</div>
-                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-bold text-[10px] flex items-center truncate uppercase tracking-tight">{s.alias || "---"}</div>
-                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-bold text-xs flex items-center truncate">{toTitleCase(s.name)}</div>
-                      <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.cif}</div>
-                      <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[11px] flex items-center truncate opacity-60 group-hover:opacity-100 uppercase font-medium">{s.city || "---"}</div>
-                      <div className={cn(
-                        "p-1.5 text-right font-mono text-[11px] flex items-center justify-end font-bold",
-                        s.pending_balance > 0 ? "text-red-600 group-hover:text-red-400" : "text-emerald-600 group-hover:text-emerald-400"
-                      )}>
-                        {formatCurrency(s.pending_balance ?? 0)}
-                      </div>
+                      {supplierColumns.map((col) => {
+                        if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.id}</div>;
+                        if (col.id === 'name') return (
+                          <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 flex flex-col justify-center truncate">
+                            <span className="font-bold text-xs truncate">{toTitleCase(s.name)}</span>
+                            {s.alias && <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest truncate group-hover:opacity-100">{s.alias}</span>}
+                          </div>
+                        );
+                        if (col.id === 'cif') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.cif}</div>;
+                        if (col.id === 'city') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 text-[11px] flex items-center truncate opacity-60 group-hover:opacity-100 uppercase font-medium">{s.city || "---"}</div>;
+                        if (col.id === 'pending_balance') return (
+                          <div key={col.id} className={cn(
+                            "p-1.5 text-right font-mono text-[11px] flex items-center justify-end font-bold",
+                            s.pending_balance > 0 ? "text-red-600 group-hover:text-red-400" : "text-emerald-600 group-hover:text-emerald-400"
+                          )}>
+                            {formatCurrency(s.pending_balance ?? 0)}
+                          </div>
+                        );
+                        return null;
+                      })}
                     </button>
                   ))}
                 </div>
@@ -1686,59 +1833,76 @@ export default function App() {
                       </div>
 
                       <div className="border border-[#0A0A0A]/10 rounded-sm overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                          <thead className="bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
-                            <tr>
-                              <th className="p-1 border-r border-[#0A0A0A]/5 w-10">
-                                <input 
-                                  type="checkbox"
-                                  checked={selectedInvoicesForBatch.length === groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length && groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedInvoicesForBatch(groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).map(inv => inv.id));
-                                    } else {
-                                      setSelectedInvoicesForBatch([]);
-                                    }
-                                  }}
+                        <DndContext 
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(event) => handleDragEnd(event, setSupplierInvoicesColumns)}
+                        >
+                          <div 
+                            className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                            style={{ gridTemplateColumns: getSupplierInvoicesGridTemplate(supplierInvoicesColumns) }}
+                          >
+                            <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={selectedInvoicesForBatch.length === groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length && groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedInvoicesForBatch(groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).map(inv => inv.id));
+                                  } else {
+                                    setSelectedInvoicesForBatch([]);
+                                  }
+                                }}
+                              />
+                            </div>
+                            <SortableContext items={supplierInvoicesColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                              {supplierInvoicesColumns.map((col, idx) => (
+                                <SortableHeader 
+                                  key={col.id}
+                                  id={col.id}
+                                  label={col.label}
+                                  isLast={idx === supplierInvoicesColumns.length - 1}
                                 />
-                              </th>
-                              <th className="p-1 border-r border-[#0A0A0A]/5">Fecha</th>
-                              <th className="p-1 border-r border-[#0A0A0A]/5">Referencia</th>
-                              <th className="p-1 border-r border-[#0A0A0A]/5 text-right">Total</th>
-                              <th className="p-1 text-right">Pendiente</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#0A0A0A]/5">
-                            {groupedInvoices
-                              .filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0)
-                              .map(inv => (
-                                <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors">
-                                  <td className="p-1 border-r border-[#0A0A0A]/5">
-                                    <input 
-                                      type="checkbox"
-                                      checked={selectedInvoicesForBatch.includes(inv.id)}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          setSelectedInvoicesForBatch(prev => [...prev, inv.id]);
-                                        } else {
-                                          setSelectedInvoicesForBatch(prev => prev.filter(id => id !== inv.id));
-                                        }
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px]">{formatDate(inv.date)}</td>
-                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold">{inv.reference}</td>
-                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono">{formatCurrency(inv.amount)}</td>
-                                  <td className="p-1 text-[10px] text-right font-mono text-red-600 font-bold">{formatCurrency(inv.pending)}</td>
-                                </tr>
                               ))}
-                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="p-8 text-center text-[10px] opacity-40 italic">No hay facturas pendientes</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                            </SortableContext>
+                          </div>
+                        </DndContext>
+
+                        <div className="divide-y divide-[#0A0A0A]/5">
+                          {groupedInvoices
+                            .filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0)
+                            .map(inv => (
+                              <div 
+                                key={inv.id} 
+                                className="grid w-full hover:bg-[#F5F5F4]/50 transition-colors"
+                                style={{ gridTemplateColumns: getSupplierInvoicesGridTemplate(supplierInvoicesColumns) }}
+                              >
+                                <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                  <input 
+                                    type="checkbox"
+                                    checked={selectedInvoicesForBatch.includes(inv.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedInvoicesForBatch(prev => [...prev, inv.id]);
+                                      } else {
+                                        setSelectedInvoicesForBatch(prev => prev.filter(id => id !== inv.id));
+                                      }
+                                    }}
+                                  />
+                                </div>
+                                {supplierInvoicesColumns.map((col) => {
+                                  if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
+                                  if (col.id === 'reference') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold flex items-center">{inv.reference}</div>;
+                                  if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono flex items-center justify-end">{formatCurrency(inv.amount)}</div>;
+                                  if (col.id === 'pending') return <div key={col.id} className="p-1 text-[10px] text-right font-mono text-red-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
+                                  return null;
+                                })}
+                              </div>
+                            ))}
+                          {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length === 0 && (
+                            <div className="p-8 text-center text-[10px] opacity-40 italic">No hay facturas pendientes</div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1819,52 +1983,31 @@ export default function App() {
               </div>
 
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
-                <div className="grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setMovementColumns)}
+                >
                   <div 
-                    onClick={() => handleMovementSort('date')}
-                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
                   >
-                    Fecha <SortIcon field="date" currentField={movementSortField} direction={movementSortDirection} />
+                    <SortableContext items={movementColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {movementColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={{ key: movementSortField, direction: movementSortDirection }}
+                          onSort={handleMovementSort}
+                          isLast={idx === movementColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                    <div className="p-1 text-center">Acc.</div>
                   </div>
-                  <div 
-                    onClick={() => handleMovementSort('doc_id')}
-                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    DOC (Int) <SortIcon field="doc_id" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div 
-                    onClick={() => handleMovementSort('type')}
-                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    Tipo <SortIcon field="type" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div 
-                    onClick={() => handleMovementSort('supplier_name')}
-                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    Proveedor / Referencia <SortIcon field="supplier_name" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div 
-                    onClick={() => handleMovementSort('amount')}
-                    className="p-1 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    Imp. Inicial <SortIcon field="amount" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div 
-                    onClick={() => handleMovementSort('pending')}
-                    className="p-1 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    Imp. Pdte. <SortIcon field="pending" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div 
-                    onClick={() => handleMovementSort('status')}
-                    className="p-1 border-r border-[#0A0A0A]/5 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                  >
-                    Estado <SortIcon field="status" currentField={movementSortField} direction={movementSortDirection} />
-                  </div>
-                  <div className="p-1 border-r border-[#0A0A0A]/5 text-center">Liqs.</div>
-                  <div className="p-1 text-center">Acc.</div>
-                </div>
+                </DndContext>
 
                 <div className="divide-y divide-[#0A0A0A]/5">
                   {groupedInvoices.map(inv => {
@@ -1875,43 +2018,59 @@ export default function App() {
                           <div 
                             onClick={() => setExpandedInvoiceId(isExpanded ? null : (inv.doc_id || null))}
                             className={cn(
-                              "grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] w-full bg-white hover:bg-[#F5F5F4]/50 transition-colors text-left cursor-pointer",
+                              "grid w-full bg-white hover:bg-[#F5F5F4]/50 transition-colors text-left cursor-pointer",
                               isExpanded && "bg-[#F5F5F4]/30"
                             )}
+                            style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
                           >
-                            <div className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>
-                            <div className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>
-                            <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Factura</span>
-                            </div>
-                            <div className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
-                              {inv.supplier_alias || inv.supplier_name}
-                            </div>
-                            <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
-                              {formatCurrency(inv.amount)}
-                            </div>
-                            <div className={cn(
-                              "p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
-                              inv.pending > 0 ? "text-red-600 font-bold" : "text-emerald-600 opacity-40"
-                            )}>
-                              {formatCurrency(inv.pending)}
-                            </div>
-                            <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                              <span className={cn(
-                                "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
-                                inv.status === 'LIQUIDADA' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-                              )}>
-                                {inv.status}
-                              </span>
-                            </div>
-                            <div className="p-1 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
-                              {inv.payments.length > 0 ? (
-                                <>
-                                  <CreditCard size={10} />
-                                  {inv.payments.length}
-                                </>
-                              ) : "-"}
-                            </div>
+                            {movementColumns.map((col) => {
+                              if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
+                              if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
+                              if (col.id === 'type') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Factura</span>
+                                </div>
+                              );
+                              if (col.id === 'supplier_name') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
+                                  {inv.supplier_alias || inv.supplier_name}
+                                </div>
+                              );
+                              if (col.id === 'amount') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
+                                  {formatCurrency(inv.amount)}
+                                </div>
+                              );
+                              if (col.id === 'pending') return (
+                                <div key={col.id} className={cn(
+                                  "p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
+                                  inv.pending > 0 ? "text-red-600 font-bold" : "text-emerald-600 opacity-40"
+                                )}>
+                                  {formatCurrency(inv.pending)}
+                                </div>
+                              );
+                              if (col.id === 'status') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                  <span className={cn(
+                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
+                                    inv.status === 'LIQUIDADA' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                                  )}>
+                                    {inv.status}
+                                  </span>
+                                </div>
+                              );
+                              if (col.id === 'payments') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
+                                  {inv.payments.length > 0 ? (
+                                    <>
+                                      <CreditCard size={10} />
+                                      {inv.payments.length}
+                                    </>
+                                  ) : "-"}
+                                </div>
+                              );
+                              return null;
+                            })}
                             <div className="p-1 flex items-center justify-center">
                               {inv.pending > 0 && (
                                 <button 
@@ -1947,22 +2106,35 @@ export default function App() {
                                 className="overflow-hidden bg-[#F5F5F4]/20"
                               >
                                 {inv.payments.map(p => (
-                                  <div key={`pay-${p.id}`} className="grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0">
-                                    <div className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
-                                    </div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
-                                      <ArrowRight size={10} className="mr-2 opacity-40" />
-                                      LIQ: {p.bank_movement_id || p.reference}
-                                    </div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-blue-600 font-bold">
-                                      {formatCurrency(p.amount)}
-                                    </div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
-                                    <div className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
+                                  <div 
+                                    key={`pay-${p.id}`} 
+                                    className="grid w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0"
+                                    style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
+                                  >
+                                    {movementColumns.map((col) => {
+                                      if (col.id === 'date') return <div key={col.id} className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>;
+                                      if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
+                                      if (col.id === 'type') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
+                                        </div>
+                                      );
+                                      if (col.id === 'supplier_name') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
+                                          <ArrowRight size={10} className="mr-2 opacity-40" />
+                                          LIQ: {p.bank_movement_id || p.reference}
+                                        </div>
+                                      );
+                                      if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>;
+                                      if (col.id === 'pending') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-blue-600 font-bold">
+                                          {formatCurrency(p.amount)}
+                                        </div>
+                                      );
+                                      if (col.id === 'status') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20 flex items-center justify-center">---</div>;
+                                      if (col.id === 'payments') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20 flex items-center justify-center">---</div>;
+                                      return null;
+                                    })}
                                     <div className="p-1 text-center text-[9px] flex items-center justify-center">
                                       <button 
                                         onClick={(e) => {
@@ -2056,55 +2228,42 @@ export default function App() {
               </div>
 
               <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-[#F5F5F4] border-b border-[#0A0A0A]/10">
-                        <th 
-                          onClick={() => handleInvoiceSort('doc_id')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          DOC (Int) <SortIcon field="doc_id" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                        <th 
-                          onClick={() => handleInvoiceSort('doc_ext')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          DOCEXT (Ext) <SortIcon field="doc_ext" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                        <th 
-                          onClick={() => handleInvoiceSort('supplier_name')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          Proveedor <SortIcon field="supplier_name" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                        <th 
-                          onClick={() => handleInvoiceSort('issue_date')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          Fecha <SortIcon field="issue_date" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                        <th className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5">Concepto</th>
-                        <th 
-                          onClick={() => handleInvoiceSort('total_amount')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          Total <SortIcon field="total_amount" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                        <th 
-                          onClick={() => handleInvoiceSort('status')}
-                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
-                        >
-                          Estado <SortIcon field="status" currentField={invoiceSortField} direction={invoiceSortDirection} />
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#0A0A0A]/5">
-                      {filteredAndSortedInvoices.map(inv => (
-                        <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors group">
-                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold">{inv.doc_id || "-"}</td>
-                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px]">{inv.doc_ext || "-"}</td>
-                          <td className="p-1 border-r border-[#0A0A0A]/5">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setHistoryColumns)}
+                >
+                  <div 
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getHistoryGridTemplate(historyColumns) }}
+                  >
+                    <SortableContext items={historyColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {historyColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={{ key: invoiceSortField, direction: invoiceSortDirection }}
+                          onSort={handleInvoiceSort}
+                          isLast={idx === historyColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+                <div className="divide-y divide-[#0A0A0A]/5">
+                  {filteredAndSortedInvoices.map(inv => (
+                    <div 
+                      key={inv.id} 
+                      className="grid w-full hover:bg-[#F5F5F4]/50 transition-colors group"
+                      style={{ gridTemplateColumns: getHistoryGridTemplate(historyColumns) }}
+                    >
+                      {historyColumns.map((col) => {
+                        if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold flex items-center">{inv.doc_id || "-"}</div>;
+                        if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_ext || "-"}</div>;
+                        if (col.id === 'supplier_name') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center">
                             <button 
                               onClick={() => {
                                 const supplier = suppliers.find(s => s.id === inv.supplier_id);
@@ -2119,9 +2278,11 @@ export default function App() {
                               <span className="font-bold text-[11px] tracking-tight">{toTitleCase(inv.supplier_name || "")}</span>
                               <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{inv.supplier_alias}</span>
                             </button>
-                          </td>
-                          <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
-                          <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px]">
+                          </div>
+                        );
+                        if (col.id === 'issue_date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] opacity-60 flex items-center">{formatDate(inv.issue_date)}</div>;
+                        if (col.id === 'concept') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">
                             {editingInvoiceConceptId === inv.id ? (
                               <input 
                                 autoFocus
@@ -2146,9 +2307,15 @@ export default function App() {
                                 {inv.concept || <span className="opacity-30 italic">Sin concepto</span>}
                               </div>
                             )}
-                          </td>
-                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
-                          <td className="p-1 text-center">
+                          </div>
+                        );
+                        if (col.id === 'total_amount') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right flex items-center justify-end">
+                            {formatCurrency(inv.total_amount ?? 0)}
+                          </div>
+                        );
+                        if (col.id === 'status') return (
+                          <div key={col.id} className="p-1 text-center flex items-center justify-center">
                             <span className={cn(
                               "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm",
                               inv.status === 'Paid' ? "bg-emerald-50 text-emerald-600" : 
@@ -2157,11 +2324,12 @@ export default function App() {
                               {inv.status === 'Paid' ? 'LIQUIDADA' : 
                                inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'}
                             </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        );
+                        return null;
+                      })}
+                    </div>
+                  ))}
                 </div>
               </div>
             </motion.div>
