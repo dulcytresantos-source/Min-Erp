@@ -245,6 +245,7 @@ export default function App() {
     total_amount: number;
     paid_amount: number;
   } | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -253,6 +254,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [systemDate, setSystemDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [showSettings, setShowSettings] = useState(false);
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
@@ -783,6 +785,39 @@ export default function App() {
     }
   };
 
+  const smartFormatDate = (value: string): string => {
+    const v = value.trim().toUpperCase();
+    if (v === 'T') return systemDate;
+    
+    // If it's already YYYY-MM-DD and valid, return it
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    
+    const [sysYear, sysMonth, sysDay] = systemDate.split('-');
+    
+    // Split by / or -
+    const parts = v.split(/[\/\-]/);
+    
+    if (parts.length === 1 && parts[0].length > 0 && parts[0].length <= 2) {
+      // Just day: DD -> YYYY-MM-DD
+      const d = parts[0].padStart(2, '0');
+      return `${sysYear}-${sysMonth}-${d}`;
+    } else if (parts.length === 2) {
+      // Day and Month: DD/MM -> YYYY-MM-DD
+      const d = parts[0].padStart(2, '0');
+      const m = parts[1].padStart(2, '0');
+      return `${sysYear}-${m}-${d}`;
+    } else if (parts.length === 3) {
+      // Day, Month, Year: DD/MM/YY or DD/MM/YYYY -> YYYY-MM-DD
+      const d = parts[0].padStart(2, '0');
+      const m = parts[1].padStart(2, '0');
+      let y = parts[2];
+      if (y.length === 2) y = `20${y}`;
+      return `${y}-${m}-${d}`;
+    }
+    
+    return value;
+  };
+
   const handleDateInput = (value: string, setter: (val: string) => void) => {
     if (value.toUpperCase() === 'T') {
       setter(systemDate);
@@ -794,12 +829,37 @@ export default function App() {
   const handleLiquidate = async () => {
     if (!isLiquidating) return;
 
+    const formattedDate = smartFormatDate(paymentDate);
+    
+    if (!formattedDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+      setLiquidationError("Fecha de pago no válida (Use DD/MM/YYYY o T)");
+      return;
+    }
+    
+    if (!bankId.trim()) {
+      setLiquidationError("El Nº de Movimiento de Liquidación es obligatorio");
+      return;
+    }
+    
+    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+      setLiquidationError("El importe a pagar debe ser mayor que cero");
+      return;
+    }
+
+    const pending = (isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0);
+    if (parseFloat(paymentAmount) > pending + 0.01) {
+      setLiquidationError(`El importe no puede superar el pendiente (${formatCurrency(pending)})`);
+      return;
+    }
+
+    setLiquidationError(null);
+
     await fetch("/api/payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         invoice_id: isLiquidating.id,
-        payment_date: paymentDate,
+        payment_date: formattedDate,
         amount_paid: parseFloat(paymentAmount),
         method: paymentMethod,
         bank_movement_id: bankId
@@ -809,6 +869,7 @@ export default function App() {
     setIsLiquidating(null);
     setPaymentAmount("");
     setBankId("");
+    setLiquidationError(null);
     await fetchData();
     if (selectedSupplier && activeCompanyId) {
       try {
@@ -824,6 +885,29 @@ export default function App() {
       } catch (error) {
         console.error("Error updating selected supplier:", error);
       }
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: number) => {
+    try {
+      await fetch(`/api/payments/${paymentId}`, {
+        method: "DELETE"
+      });
+      setIsDeletingPayment(null);
+      await fetchData();
+      if (selectedSupplier && activeCompanyId) {
+        const sRes = await fetch(`/api/suppliers?companyId=${activeCompanyId}`);
+        const sData = await sRes.json();
+        if (Array.isArray(sData)) {
+          const updated = sData.find((s: Supplier) => s.id === selectedSupplier.id);
+          if (updated) {
+            setSelectedSupplier(updated);
+            fetchSupplierDetails(updated.id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting payment:", error);
     }
   };
 
@@ -862,8 +946,8 @@ export default function App() {
       <aside className="w-64 bg-white border-r border-[#0A0A0A]/10 flex flex-col sticky top-0 h-screen z-40">
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 bg-rose-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-rose-600">DocLedger <span className="opacity-30 font-medium">v5.4</span></h1>
+            <div className="w-8 h-8 bg-indigo-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v5.6</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
@@ -1493,7 +1577,18 @@ export default function App() {
                                     </div>
                                     <div className="p-2 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
                                     <div className="p-2 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20">---</div>
-                                    <div className="p-2 text-center text-[9px] opacity-20">---</div>
+                                    <div className="p-2 text-center text-[9px] flex items-center justify-center">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsDeletingPayment(p.id);
+                                        }}
+                                        className="text-red-600 hover:text-red-800 transition-colors"
+                                        title="Eliminar Liquidación"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </motion.div>
@@ -1855,6 +1950,12 @@ export default function App() {
                 <button onClick={() => setIsLiquidating(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
               </div>
               <div className="p-6 flex flex-col gap-6">
+                {liquidationError && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
+                    <AlertCircle size={14} />
+                    {liquidationError}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Importe a Pagar</label>
@@ -1870,22 +1971,23 @@ export default function App() {
                     <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Pendiente: {formatCurrency((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0))}</p>
                   </div>
                   <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy)</label>
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy) *</label>
                     <input 
                       type="text" 
-                      placeholder="YYYY-MM-DD o T"
+                      placeholder="DD/MM/YYYY o T"
                       value={paymentDate}
                       onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
+                      onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
                       className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">ID Movimiento Banco</label>
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Nº Movimiento de Liquidación *</label>
                     <input 
                       type="text" 
                       value={bankId}
                       onChange={(e) => setBankId(e.target.value)}
-                      placeholder="TXN_ID..."
+                      placeholder="Nº MOVIMIENTO..."
                       className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all placeholder:opacity-20"
                     />
                   </div>
@@ -1900,6 +2002,54 @@ export default function App() {
             </motion.div>
           </div>
         )}
+
+        {isDeletingPayment && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+            >
+              <div className="p-6 bg-red-600 text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Liquidación</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Esta acción no se puede deshacer</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsDeletingPayment(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+              </div>
+              <div className="p-8 flex flex-col items-center text-center gap-6">
+                <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                  <AlertCircle size={40} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar esta liquidación?</p>
+                  <p className="text-xs opacity-40 mt-2">El importe se restará del total pagado de la factura.</p>
+                </div>
+                <div className="flex gap-3 w-full">
+                  <button 
+                    onClick={() => setIsDeletingPayment(null)}
+                    className="flex-1 py-4 bg-[#F5F5F4] rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#E4E3E0] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={() => handleDeletePayment(isDeletingPayment)}
+                    className="flex-1 py-4 bg-red-600 text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {isDeletingCompany && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
             <motion.div 
