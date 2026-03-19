@@ -857,7 +857,7 @@ export default function App() {
             onClick={() => setView('upload')}
             className={cn(
               "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'upload' ? "bg-[#0A0A0A] text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
+              view === 'upload' ? "bg-green-600 text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
             )}
           >
             <Upload size={14} />
@@ -964,7 +964,7 @@ export default function App() {
                   <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Gestión de Compañías</label>
                   <button 
                     onClick={() => setIsAddingCompany(!isAddingCompany)}
-                    className="text-[9px] font-bold uppercase tracking-widest bg-[#0A0A0A] text-white px-2 py-1 rounded-sm hover:opacity-80 transition-opacity"
+                    className="text-[9px] font-bold uppercase tracking-widest bg-green-600 text-white px-2 py-1 rounded-sm hover:opacity-80 transition-opacity"
                   >
                     {isAddingCompany ? "Cancelar" : "Nueva"}
                   </button>
