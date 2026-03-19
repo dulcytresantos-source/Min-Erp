@@ -1097,7 +1097,7 @@ export default function App() {
       "Proveedor": inv.supplier_name || "",
       "CIF": inv.supplier_cif || "",
       "Fecha": formatDate(inv.issue_date),
-      "Total": inv.total_amount || 0,
+      "Total": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.total_amount || 0),
       "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
     }));
     
@@ -1151,7 +1151,7 @@ export default function App() {
         <div className="p-8 border-b border-[#0A0A0A]/10">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 bg-indigo-600 rounded-sm flex items-center justify-center text-white font-bold text-xs">DL</div>
-            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.1</span></h1>
+            <h1 className="text-sm font-bold tracking-tighter uppercase text-indigo-600">DocLedger <span className="opacity-30 font-medium">v6.2</span></h1>
           </div>
           <p className="text-[9px] uppercase tracking-[0.2em] opacity-30 font-bold">Accounting System</p>
           
