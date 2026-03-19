@@ -227,26 +227,27 @@ interface LogEntry {
   message: string;
 }
 
-const exportToCSV = (data: any[], filename: string) => {
+const exportToTSV = (data: any[], filename: string) => {
   if (data.length === 0) return;
   
-  const headers = Object.keys(data[0]).join(",");
+  const headers = Object.keys(data[0]).join("\t");
   const rows = data.map(row => 
     Object.values(row).map(value => {
       const strValue = String(value);
-      if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
-        return `"${strValue.replace(/"/g, '""')}"`;
-      }
-      return strValue;
-    }).join(",")
+      // For TSV, we only need to escape tabs and newlines if they exist
+      // Usually, we just replace them or wrap in quotes if needed, 
+      // but for Excel TSV, simple tab separation is often enough.
+      // We'll replace tabs with spaces to avoid breaking the format.
+      return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
+    }).join("\t")
   );
   
-  const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const tsvContent = "\uFEFF" + [headers, ...rows].join("\n");
+  const blob = new Blob([tsvContent], { type: "text/tab-separated-values;charset=utf-8;" });
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.setAttribute("href", url);
-  link.setAttribute("download", `${filename}.csv`);
+  link.setAttribute("download", `${filename}.tsv`);
   link.style.visibility = "hidden";
   document.body.appendChild(link);
   link.click();
@@ -1097,7 +1098,7 @@ export default function App() {
       "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
     }));
     
-    exportToCSV(dataToExport, `historico_facturas_${format(new Date(), "yyyyMMdd")}`);
+    exportToTSV(dataToExport, `historico_facturas_${format(new Date(), "yyyyMMdd")}`);
   };
 
   const sortedSuppliers = useMemo(() => {
@@ -1583,7 +1584,7 @@ export default function App() {
                         <table className="w-full text-left border-collapse">
                           <thead className="bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
                             <tr>
-                              <th className="p-2 border-r border-[#0A0A0A]/5 w-10">
+                              <th className="p-1 border-r border-[#0A0A0A]/5 w-10">
                                 <input 
                                   type="checkbox"
                                   checked={selectedInvoicesForBatch.length === groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length && groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0}
@@ -1596,10 +1597,10 @@ export default function App() {
                                   }}
                                 />
                               </th>
-                              <th className="p-2 border-r border-[#0A0A0A]/5">Fecha</th>
-                              <th className="p-2 border-r border-[#0A0A0A]/5">Referencia</th>
-                              <th className="p-2 border-r border-[#0A0A0A]/5 text-right">Total</th>
-                              <th className="p-2 text-right">Pendiente</th>
+                              <th className="p-1 border-r border-[#0A0A0A]/5">Fecha</th>
+                              <th className="p-1 border-r border-[#0A0A0A]/5">Referencia</th>
+                              <th className="p-1 border-r border-[#0A0A0A]/5 text-right">Total</th>
+                              <th className="p-1 text-right">Pendiente</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#0A0A0A]/5">
@@ -1607,7 +1608,7 @@ export default function App() {
                               .filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0)
                               .map(inv => (
                                 <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors">
-                                  <td className="p-2 border-r border-[#0A0A0A]/5">
+                                  <td className="p-1 border-r border-[#0A0A0A]/5">
                                     <input 
                                       type="checkbox"
                                       checked={selectedInvoicesForBatch.includes(inv.id)}
@@ -1620,10 +1621,10 @@ export default function App() {
                                       }}
                                     />
                                   </td>
-                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px]">{formatDate(inv.date)}</td>
-                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px] font-bold">{inv.reference}</td>
-                                  <td className="p-2 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono">{formatCurrency(inv.amount)}</td>
-                                  <td className="p-2 text-[10px] text-right font-mono text-red-600 font-bold">{formatCurrency(inv.pending)}</td>
+                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px]">{formatDate(inv.date)}</td>
+                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold">{inv.reference}</td>
+                                  <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono">{formatCurrency(inv.amount)}</td>
+                                  <td className="p-1 text-[10px] text-right font-mono text-red-600 font-bold">{formatCurrency(inv.pending)}</td>
                                 </tr>
                               ))}
                             {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length === 0 && (
@@ -1716,48 +1717,48 @@ export default function App() {
                 <div className="grid grid-cols-[100px_100px_100px_1fr_100px_100px_100px_60px_40px] border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50">
                   <div 
                     onClick={() => handleMovementSort('date')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Fecha <SortIcon field="date" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('doc_id')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     DOC (Int) <SortIcon field="doc_id" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('type')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Tipo <SortIcon field="type" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('supplier_name')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Proveedor / Referencia <SortIcon field="supplier_name" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('amount')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Imp. Inicial <SortIcon field="amount" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('pending')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Imp. Pdte. <SortIcon field="pending" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
                   <div 
                     onClick={() => handleMovementSort('status')}
-                    className="p-1.5 border-r border-[#0A0A0A]/5 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                    className="p-1 border-r border-[#0A0A0A]/5 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                   >
                     Estado <SortIcon field="status" currentField={movementSortField} direction={movementSortDirection} />
                   </div>
-                  <div className="p-1.5 border-r border-[#0A0A0A]/5 text-center">Liqs.</div>
-                  <div className="p-1.5 text-center">Acc.</div>
+                  <div className="p-1 border-r border-[#0A0A0A]/5 text-center">Liqs.</div>
+                  <div className="p-1 text-center">Acc.</div>
                 </div>
 
                 <div className="divide-y divide-[#0A0A0A]/5">
@@ -1773,24 +1774,24 @@ export default function App() {
                               isExpanded && "bg-[#F5F5F4]/30"
                             )}
                           >
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                            <div className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>
+                            <div className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>
+                            <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Factura</span>
                             </div>
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
+                            <div className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
                               {inv.supplier_alias || inv.supplier_name}
                             </div>
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
+                            <div className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
                               {formatCurrency(inv.amount)}
                             </div>
                             <div className={cn(
-                              "p-1.5 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
+                              "p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
                               inv.pending > 0 ? "text-red-600 font-bold" : "text-emerald-600 opacity-40"
                             )}>
                               {formatCurrency(inv.pending)}
                             </div>
-                            <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                            <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                               <span className={cn(
                                 "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
                                 inv.status === 'LIQUIDADA' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
@@ -1798,7 +1799,7 @@ export default function App() {
                                 {inv.status}
                               </span>
                             </div>
-                            <div className="p-1.5 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
+                            <div className="p-1 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
                               {inv.payments.length > 0 ? (
                                 <>
                                   <CreditCard size={10} />
@@ -1806,7 +1807,7 @@ export default function App() {
                                 </>
                               ) : "-"}
                             </div>
-                            <div className="p-1.5 flex items-center justify-center">
+                            <div className="p-1 flex items-center justify-center">
                               {inv.pending > 0 && (
                                 <button 
                                   onClick={(e) => {
@@ -1823,7 +1824,7 @@ export default function App() {
                                     setSelectedInvoicesForBatch([inv.id]);
                                     setPaymentAmount(inv.pending.toFixed(2));
                                   }}
-                                  className="p-1.5 bg-[#0A0A0A] text-white rounded-sm hover:bg-[#1A1A1A] transition-colors"
+                                  className="p-1 bg-[#0A0A0A] text-white rounded-sm hover:bg-[#1A1A1A] transition-colors"
                                   title="Liquidar Factura"
                                 >
                                   <Euro size={12} />
@@ -1944,7 +1945,7 @@ export default function App() {
                     className="px-6 py-2 bg-emerald-600 text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
                   >
                     <Download size={14} />
-                    Exportar CSV
+                    Exportar TSV
                   </button>
                 </div>
               </div>
@@ -1956,37 +1957,37 @@ export default function App() {
                       <tr className="bg-[#F5F5F4] border-b border-[#0A0A0A]/10">
                         <th 
                           onClick={() => handleInvoiceSort('doc_id')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           DOC (Int) <SortIcon field="doc_id" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('doc_ext')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           DOCEXT (Ext) <SortIcon field="doc_ext" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('supplier_name')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Proveedor <SortIcon field="supplier_name" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('issue_date')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Fecha <SortIcon field="issue_date" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('total_amount')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 border-r border-[#0A0A0A]/5 text-right cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Total <SortIcon field="total_amount" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
                         <th 
                           onClick={() => handleInvoiceSort('status')}
-                          className="p-1.5 text-[9px] font-bold uppercase tracking-widest opacity-40 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
+                          className="p-1 text-[9px] font-bold uppercase tracking-widest opacity-40 text-center cursor-pointer hover:bg-[#0A0A0A]/5 transition-colors"
                         >
                           Estado <SortIcon field="status" currentField={invoiceSortField} direction={invoiceSortDirection} />
                         </th>
@@ -1995,9 +1996,9 @@ export default function App() {
                     <tbody className="divide-y divide-[#0A0A0A]/5">
                       {filteredAndSortedInvoices.map(inv => (
                         <tr key={inv.id} className="hover:bg-[#F5F5F4]/50 transition-colors group">
-                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold">{inv.doc_id || "-"}</td>
-                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[10px]">{inv.doc_ext || "-"}</td>
-                          <td className="p-1.5 border-r border-[#0A0A0A]/5">
+                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold">{inv.doc_id || "-"}</td>
+                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px]">{inv.doc_ext || "-"}</td>
+                          <td className="p-1 border-r border-[#0A0A0A]/5">
                             <button 
                               onClick={() => {
                                 const supplier = suppliers.find(s => s.id === inv.supplier_id);
@@ -2013,9 +2014,9 @@ export default function App() {
                               <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{inv.supplier_alias}</span>
                             </button>
                           </td>
-                          <td className="p-1.5 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
-                          <td className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
-                          <td className="p-1.5 text-center">
+                          <td className="p-1 border-r border-[#0A0A0A]/5 text-[10px] opacity-60">{formatDate(inv.issue_date)}</td>
+                          <td className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right">{formatCurrency(inv.total_amount ?? 0)}</td>
+                          <td className="p-1 text-center">
                             <span className={cn(
                               "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm",
                               inv.status === 'Paid' ? "bg-emerald-50 text-emerald-600" : 
