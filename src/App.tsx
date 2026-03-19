@@ -1457,6 +1457,7 @@ export default function App() {
                                       total_amount: inv.amount,
                                       paid_amount: inv.amount - inv.pending
                                     });
+                                    setPaymentAmount(inv.pending.toString());
                                   }}
                                   className="p-1.5 bg-[#0A0A0A] text-white rounded-sm hover:bg-[#1A1A1A] transition-colors"
                                   title="Liquidar Factura"
