@@ -375,7 +375,7 @@ app.get("/api/suppliers/cif/:cif", async (req, res) => {
 });
 
 app.post("/api/suppliers", async (req, res) => {
-  const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact } = req.body;
+  const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic } = req.body;
   try {
     // Generate PRovXXX ID based on max current ID to avoid collisions
     const maxIdResult = await db.execute("SELECT id FROM suppliers WHERE id LIKE 'PRov%' ORDER BY id DESC LIMIT 1");
@@ -390,7 +390,7 @@ app.post("/api/suppliers", async (req, res) => {
     const id = `PRov${nextNum.toString().padStart(3, '0')}`;
     
     await db.execute({
-      sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       args: [
         id, 
         company_id ?? null, 
@@ -406,7 +406,8 @@ app.post("/api/suppliers", async (req, res) => {
         phone ?? null, 
         name2 ?? null, 
         address2 ?? null, 
-        main_contact ?? null
+        main_contact ?? null,
+        is_generic ?? 0
       ],
     });
     res.json({ id });

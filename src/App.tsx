@@ -373,6 +373,7 @@ export default function App() {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [systemDate, setSystemDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [showSettings, setShowSettings] = useState(false);
+  const [backupPath, setBackupPath] = useState<string>("C:\\Backups\\DocLedger");
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', address: '', cif: '' });
@@ -380,7 +381,8 @@ export default function App() {
   const [isDeletingCompany, setIsDeletingCompany] = useState<Company | null>(null);
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
-  const [exportConsoleData, setExportConsoleData] = useState<string | null>(null);
+  const [exportConsoleData, setExportConsoleData] = useState<{ title: string; data: string; filename: string } | null>(null);
+  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -672,6 +674,12 @@ export default function App() {
       }
     }
   }, [activeCompanyId, fetchData, view, movementsFilterSupplierId]);
+
+  useEffect(() => {
+    if (view !== 'supplier-detail') {
+      setIsCreatingSupplier(false);
+    }
+  }, [view]);
 
   const fetchSupplierDetails = async (id: string) => {
     if (!activeCompanyId) return;
@@ -1002,7 +1010,85 @@ export default function App() {
     }
   };
 
+  const handleNewSupplier = () => {
+    // Find max ID like PRovXXX
+    const provIds = suppliers
+      .map(s => s.id)
+      .filter(id => id.startsWith('PRov'))
+      .map(id => {
+        const num = parseInt(id.replace('PRov', ''));
+        return isNaN(num) ? 0 : num;
+      });
+    
+    const nextNum = provIds.length > 0 ? Math.max(...provIds) + 1 : 1;
+    const nextId = `PRov${nextNum.toString().padStart(3, '0')}`;
+
+    const newSupplier: Supplier = {
+      id: nextId,
+      company_id: activeCompanyId || 0,
+      name: '',
+      cif: '',
+      email: '',
+      address: '',
+      city: '',
+      province: '',
+      zip_code: '',
+      country_code: 'ES',
+      alias: '',
+      phone: '',
+      name2: '',
+      address2: '',
+      main_contact: '',
+      pending_balance: 0,
+      is_generic: 0
+    };
+
+    setSelectedSupplier(newSupplier);
+    setIsCreatingSupplier(true);
+    setView('supplier-detail');
+    setActiveTab('General');
+  };
+
+  const handleSaveNewSupplier = async () => {
+    if (!selectedSupplier || !activeCompanyId) return;
+    
+    if (!selectedSupplier.name || !selectedSupplier.cif) {
+      alert("El nombre y el CIF son obligatorios");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...selectedSupplier,
+          company_id: activeCompanyId
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al guardar el proveedor");
+        return;
+      }
+
+      // Refresh list
+      await fetchData();
+      setIsCreatingSupplier(false);
+      setView('suppliers');
+      setSelectedSupplier(null);
+    } catch (err) {
+      console.error("Error saving new supplier:", err);
+      alert("Error al guardar el proveedor");
+    }
+  };
+
   const handleToggleGeneric = async (supplierId: string, currentValue: boolean) => {
+    if (isCreatingSupplier && selectedSupplier) {
+      setSelectedSupplier({ ...selectedSupplier, is_generic: !currentValue ? 1 : 0 });
+      return;
+    }
     if (!activeCompanyId) return;
     try {
       const res = await fetch(`/api/suppliers/${supplierId}`, {
@@ -1300,12 +1386,15 @@ export default function App() {
 
   const handleExportHistory = () => {
     const dataToExport = filteredAndSortedInvoices.map(inv => ({
-      "DOC (Int)": inv.doc_id || "",
-      "DOCEXT (Ext)": inv.doc_ext || "",
+      "Nº Prov": inv.supplier_id || "",
       "Proveedor": inv.supplier_name || "",
       "CIF": inv.supplier_cif || "",
+      "DOC (Int)": inv.doc_id || "",
+      "DOCEXT (Ext)": inv.doc_ext || "",
+      "Referencia": inv.invoice_number || "",
       "Fecha": formatDate(inv.issue_date),
       "Total": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.total_amount || 0),
+      "Pagado": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.paid_amount || 0),
       "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
     }));
     
@@ -1320,7 +1409,102 @@ export default function App() {
     );
     
     const tsvContent = [headers, ...rows].join("\n");
-    setExportConsoleData(tsvContent);
+    setExportConsoleData({
+      title: "Backup Histórico de Facturas",
+      data: tsvContent,
+      filename: `Historico_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
+    });
+  };
+
+  const handleExportMovements = () => {
+    const dataToExport = groupedInvoices.map(inv => {
+      const lastPayment = inv.payments && inv.payments.length > 0 
+        ? [...inv.payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+        : null;
+      
+      const bankIds = inv.payments && inv.payments.length > 0
+        ? inv.payments.map(p => p.bank_movement_id).filter(Boolean).join(", ")
+        : "";
+
+      return {
+        "Proveedor": inv.supplier_name || "",
+        "Nº Prov": inv.supplier_id || "",
+        "DOC (Int)": inv.doc_id || "",
+        "DOCEXT (Ext)": inv.doc_ext || "",
+        "Referencia": inv.reference || "",
+        "Fecha Factura": formatDate(inv.date),
+        "Importe Total": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.amount || 0),
+        "Importe Pendiente": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.pending || 0),
+        "Estado": inv.status,
+        "Fecha Liq (Última)": lastPayment ? formatDate(lastPayment.date) : "---",
+        "Bank ID(s)": bankIds || "---"
+      };
+    });
+    
+    if (dataToExport.length === 0) return;
+    
+    const headers = Object.keys(dataToExport[0]).join("\t");
+    const rows = dataToExport.map(row => 
+      Object.values(row).map(value => {
+        const strValue = String(value);
+        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
+      }).join("\t")
+    );
+    
+    const tsvContent = [headers, ...rows].join("\n");
+    setExportConsoleData({
+      title: "Backup Movimientos Proveedor",
+      data: tsvContent,
+      filename: `Movimientos_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
+    });
+  };
+
+  const handleExportMaestro = () => {
+    // Export all suppliers
+    const supplierData = suppliers.map(s => ({
+      "Tipo": "PROVEEDOR",
+      "ID": s.id,
+      "Nombre": s.name,
+      "CIF": s.cif,
+      "Email": s.email || "",
+      "Teléfono": s.phone || "",
+      "Dirección": s.address || "",
+      "IBAN": s.iban || "",
+      "Categoría": s.category || ""
+    }));
+
+    // Export all invoices
+    const invoiceData = invoices.map(inv => ({
+      "Tipo": "FACTURA",
+      "ID": inv.id,
+      "Doc ID": inv.doc_id,
+      "Doc Ext": inv.doc_ext,
+      "Proveedor ID": inv.supplier_id,
+      "Nº Factura": inv.invoice_number,
+      "Fecha": formatDate(inv.issue_date),
+      "Vencimiento": formatDate(inv.due_date),
+      "Total": inv.total_amount,
+      "Estado": inv.status
+    }));
+
+    // Combine into a single TSV with a "Tipo" column to distinguish
+    const allData = [...supplierData, ...invoiceData];
+    if (allData.length === 0) return;
+
+    const headers = Object.keys(allData[0]).join("\t");
+    const rows = allData.map(row => 
+      Object.values(row).map(value => {
+        const strValue = String(value);
+        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
+      }).join("\t")
+    );
+
+    const tsvContent = [headers, ...rows].join("\n");
+    setExportConsoleData({
+      title: "Backup Maestro (Todo)",
+      data: tsvContent,
+      filename: `Maestro_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
+    });
   };
 
   const sortedSuppliers = useMemo(() => {
@@ -1499,6 +1683,46 @@ export default function App() {
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
+                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-2">Backup & Exportación</label>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[8px] font-bold uppercase tracking-[0.2em] opacity-30 block mb-1">Ruta de Backup (Local)</label>
+                    <input 
+                      type="text" 
+                      value={backupPath}
+                      onChange={(e) => setBackupPath(e.target.value)}
+                      placeholder="Ej: C:\Users\Admin\Backups"
+                      className="w-full px-3 py-2 bg-[#F5F5F4] border-none rounded-sm text-[10px] font-bold outline-none focus:ring-1 focus:ring-[#0A0A0A]/10"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleExportMovements}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-emerald-700 transition-all"
+                  >
+                    <Download size={12} />
+                    Backup Movimientos
+                  </button>
+                  <button 
+                    onClick={handleExportHistory}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-emerald-700 transition-all"
+                  >
+                    <Download size={12} />
+                    Backup Histórico
+                  </button>
+                  <button 
+                    onClick={handleExportMaestro}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20"
+                  >
+                    <Terminal size={12} />
+                    Backup Maestro (Todo)
+                  </button>
+                  <p className="text-[8px] opacity-40 italic leading-tight">
+                    Nota: Debido a restricciones del navegador, el archivo se descargará en tu carpeta de descargas. Usa la ruta indicada arriba para organizar tus archivos manualmente.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-[#0A0A0A]/10">
                 <div className="flex justify-between items-center mb-4">
                   <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Gestión de Compañías</label>
                   <button 
@@ -1589,15 +1813,24 @@ export default function App() {
                   <h2 className="text-4xl font-bold tracking-tighter">Maestro de Proveedores</h2>
                   <p className="text-xs font-bold uppercase tracking-widest opacity-40">Gestión de Cuentas a Pagar / Ledger de Entidades</p>
                 </div>
-                <div className="relative w-80">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="FILTRAR POR NOMBRE, CIF O ID..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none text-[10px] font-bold uppercase tracking-widest focus:border-[#0A0A0A] transition-all placeholder:opacity-30"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="FILTRAR POR NOMBRE, CIF O ID..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none text-[10px] font-bold uppercase tracking-widest focus:border-[#0A0A0A] transition-all placeholder:opacity-30"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleNewSupplier}
+                    className="p-2 bg-violet-600 text-white rounded-sm hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 flex items-center justify-center shrink-0"
+                    title="Nuevo Proveedor"
+                  >
+                    <Plus size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -1641,8 +1874,10 @@ export default function App() {
                       key={s.id}
                       onClick={() => {
                         setSelectedSupplier(s);
+                        setIsCreatingSupplier(false);
                         fetchSupplierDetails(s.id);
                         setView('supplier-detail');
+                        setActiveTab('General');
                       }}
                       className="grid w-full text-left hover:bg-[#0A0A0A] hover:text-white transition-colors group"
                       style={{ gridTemplateColumns: getSupplierGridTemplate(supplierColumns) }}
@@ -1692,16 +1927,49 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="max-w-6xl mx-auto"
             >
-              <div className="flex items-center gap-4 mb-8">
-                <button 
-                  onClick={() => setView('suppliers')}
-                  className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm hover:bg-[#F5F5F4] transition-colors"
-                >
-                  <ArrowLeft size={20} />
-                </button>
-                <div>
-                  <h2 className="text-3xl font-bold tracking-tighter">{selectedSupplier.name}</h2>
-                  <p className="text-xs font-bold uppercase tracking-widest opacity-40">Ficha de Proveedor / {selectedSupplier.id}</p>
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => {
+                      setView('suppliers');
+                      setIsCreatingSupplier(false);
+                    }}
+                    className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm hover:bg-[#F5F5F4] transition-colors"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  <div>
+                    <h2 className="text-3xl font-bold tracking-tighter">
+                      {isCreatingSupplier ? "Nuevo Proveedor" : selectedSupplier.name}
+                    </h2>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40">
+                      Ficha de Proveedor / {selectedSupplier.id}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isCreatingSupplier && (
+                    <>
+                      <button 
+                        onClick={() => {
+                          setIsCreatingSupplier(false);
+                          setView('suppliers');
+                          setSelectedSupplier(null);
+                        }}
+                        className="px-4 py-2 bg-[#F5F5F4] text-[#0A0A0A]/60 rounded-sm font-bold uppercase tracking-widest hover:bg-[#E4E3E0] transition-all flex items-center gap-2"
+                      >
+                        <X size={16} />
+                        Cancelar
+                      </button>
+                      <button 
+                        onClick={handleSaveNewSupplier}
+                        className="px-6 py-2 bg-emerald-600 text-white rounded-sm font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                      >
+                        <Check size={16} />
+                        Guardar Proveedor
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1732,36 +2000,130 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nº . . . . . . . . . . .</label>
                           <div className="flex gap-1">
-                            <input readOnly value={selectedSupplier.id} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
-                            <button className="p-1.5 bg-[#F5F5F4] rounded-sm hover:bg-[#E4E3E0]"><Search size={12} /></button>
+                            <input 
+                              readOnly={!isCreatingSupplier} 
+                              value={selectedSupplier.id} 
+                              onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, id: e.target.value})}
+                              className={cn(
+                                "flex-1 px-2 py-1.5 rounded-sm border-none outline-none font-mono text-[11px]",
+                                isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              )}
+                            />
+                            <button 
+                              onClick={handleNewSupplier}
+                              className="p-1.5 bg-[#F5F5F4] rounded-sm hover:bg-[#E4E3E0]"
+                              title="Nuevo Proveedor"
+                            >
+                              <Plus size={12} />
+                            </button>
                           </div>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre. . . . . . . .</label>
-                          <input readOnly value={toTitleCase(selectedSupplier.name)} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-bold text-[11px] uppercase" />
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={isCreatingSupplier ? selectedSupplier.name : toTitleCase(selectedSupplier.name)} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, name: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none font-bold text-[11px] uppercase",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre 2. . . . . . .</label>
-                          <input readOnly value={selectedSupplier.name2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.name2 || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, name2: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección . . . . . .</label>
-                          <input readOnly value={selectedSupplier.address} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.address} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, address: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección 2 . . . . .</label>
-                          <input readOnly value={selectedSupplier.address2 || ""} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.address2 || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, address2: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">C.P. +Población . .</label>
                           <div className="flex gap-1">
-                            <input readOnly value={selectedSupplier.zip_code || ""} className="w-16 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
-                            <input readOnly value={selectedSupplier.city || ""} className="flex-1 px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px]" />
+                            <input 
+                              readOnly={!isCreatingSupplier} 
+                              value={selectedSupplier.zip_code || ""} 
+                              onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, zip_code: e.target.value})}
+                              className={cn(
+                                "w-16 px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                                isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              )}
+                            />
+                            <input 
+                              readOnly={!isCreatingSupplier} 
+                              value={selectedSupplier.city || ""} 
+                              onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, city: e.target.value})}
+                              className={cn(
+                                "flex-1 px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                                isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              )}
+                            />
                           </div>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Provincia . . . . . . .</label>
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.province || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, province: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">País (ISO) . . . . . . .</label>
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.country_code || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, country_code: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">CIF/NIF. . . . . . . . .</label>
-                          <input readOnly value={selectedSupplier.cif} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none font-mono text-[11px]" />
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.cif} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, cif: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none font-mono text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4 mt-2">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Prov. Genérico . . .</label>
@@ -1786,7 +2148,10 @@ export default function App() {
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Alias . . . . . . . . . .</label>
                           <input 
                             value={selectedSupplier.alias || ""} 
-                            onChange={(e) => handleUpdateAlias(selectedSupplier.id, e.target.value)}
+                            onChange={(e) => isCreatingSupplier 
+                              ? setSelectedSupplier({...selectedSupplier, alias: e.target.value}) 
+                              : handleUpdateAlias(selectedSupplier.id, e.target.value)
+                            }
                             className="px-2 py-1.5 bg-white border border-[#0A0A0A]/10 rounded-sm outline-none font-bold text-[11px] uppercase tracking-tight focus:ring-1 focus:ring-violet-600/20" 
                           />
                         </div>
@@ -1811,6 +2176,49 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Últ. modif. . . . . . .</label>
                           <input readOnly value={formatDate(new Date().toISOString())} className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm border-none outline-none text-[11px] opacity-40" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'Comunicación' && (
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Teléfono . . . . . . . .</label>
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.phone || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, phone: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Email . . . . . . . . . .</label>
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.email || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, email: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Contacto . . . . . . . .</label>
+                          <input 
+                            readOnly={!isCreatingSupplier} 
+                            value={selectedSupplier.main_contact || ""} 
+                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, main_contact: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
+                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1912,7 +2320,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {activeTab !== 'General' && activeTab !== 'Facturación' && (
+                  {activeTab !== 'General' && activeTab !== 'Comunicación' && activeTab !== 'Facturación' && (
                     <div className="p-12 text-center border border-dashed border-[#0A0A0A]/10 rounded-sm">
                       <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Sección en desarrollo: {activeTab}</p>
                     </div>
@@ -2227,13 +2635,6 @@ export default function App() {
                   >
                     <Filter size={14} />
                     Filtrar
-                  </button>
-                  <button 
-                    onClick={handleExportHistory} 
-                    className="px-6 py-2 bg-emerald-600 text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
-                  >
-                    <Download size={14} />
-                    Exportar TSV
                   </button>
                 </div>
               </div>
@@ -2868,14 +3269,14 @@ export default function App() {
                     <Terminal size={16} />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold tracking-widest uppercase">Export Console (TSV)</h3>
+                    <h3 className="text-xs font-bold tracking-widest uppercase">{exportConsoleData.title}</h3>
                     <p className="text-[8px] opacity-40 uppercase tracking-[0.2em] font-bold">Listo para copiar y pegar en Excel</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(exportConsoleData);
+                      navigator.clipboard.writeText(exportConsoleData.data);
                       alert("Datos copiados al portapapeles");
                     }}
                     className="px-4 py-1.5 bg-emerald-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
@@ -2887,9 +3288,13 @@ export default function App() {
                 </div>
               </div>
               <div className="flex-1 p-6 overflow-auto font-mono text-[10px] text-emerald-500/80 leading-relaxed whitespace-pre bg-[#0A0A0A]">
-                {exportConsoleData}
+                {exportConsoleData.data}
               </div>
-              <div className="p-3 bg-[#0A0A0A] border-t border-white/5 text-center">
+              <div className="p-4 bg-[#0A0A0A] border-t border-white/5 flex justify-between items-center">
+                <div className="text-left">
+                  <p className="text-[8px] text-white/40 font-bold uppercase tracking-widest">Ruta de Destino Sugerida:</p>
+                  <p className="text-[9px] text-emerald-500 font-mono mt-1">{backupPath || "No definida"} / {exportConsoleData.filename}</p>
+                </div>
                 <p className="text-[8px] text-white/20 font-bold uppercase tracking-[0.3em]">Selecciona el texto, copia (Ctrl+C) y pega en Excel</p>
               </div>
             </motion.div>
