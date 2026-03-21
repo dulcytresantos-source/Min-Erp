@@ -318,12 +318,15 @@ function SortableHeader({ id, label, sortKey, sortConfig, onSort, isLast }: any)
       {...attributes}
       {...listeners}
     >
-      <div className="flex-1 flex items-center gap-1 truncate" onClick={(e) => {
+      <div className={cn(
+        "flex-1 flex items-center gap-1 truncate",
+        sortKey !== null && "cursor-pointer"
+      )} onClick={(e) => {
         e.stopPropagation();
-        if (onSort) onSort(sortKey || id);
+        if (onSort && sortKey !== null) onSort(sortKey || id);
       }}>
         <span className="truncate">{label}</span>
-        {sortConfig && sortConfig.key === (sortKey || id) && (
+        {sortKey !== null && sortConfig && sortConfig.key === (sortKey || id) && (
           sortConfig.direction === 'asc' ? <ArrowUp size={8} className="shrink-0" /> : <ArrowDown size={8} className="shrink-0" />
         )}
       </div>
@@ -385,6 +388,7 @@ export default function App() {
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -413,6 +417,7 @@ export default function App() {
     { id: 'concept', label: 'Concepto', width: '1fr', sortKey: 'concept' },
     { id: 'total_amount', label: 'Total', width: '120px', sortKey: 'total_amount' },
     { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
+    { id: 'actions', label: 'Acciones', width: '60px', sortKey: null },
   ]);
 
   const [supplierInvoicesColumns, setSupplierInvoicesColumns] = useState([
@@ -604,11 +609,11 @@ export default function App() {
     }
   };
 
-  const handleInvoiceSort = (field: keyof Invoice) => {
+  const handleInvoiceSort = (field: string) => {
     if (invoiceSortField === field) {
       setInvoiceSortDirection(invoiceSortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      setInvoiceSortField(field);
+      setInvoiceSortField(field as keyof Invoice);
       setInvoiceSortDirection('asc');
     }
   };
@@ -1382,6 +1387,30 @@ export default function App() {
     } catch (error) {
       console.error("Error deleting payment:", error);
       alert(error instanceof Error ? error.message : "Error al eliminar la liquidación");
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: number) => {
+    if (!invoiceId) return;
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "DELETE"
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Error al eliminar la factura");
+      }
+
+      setIsDeletingInvoice(null);
+      await fetchData();
+      await fetchAllMovements();
+      if (selectedSupplier && activeCompanyId) {
+        fetchSupplierDetails(selectedSupplier.id);
+      }
+    } catch (err) {
+      console.error("Error deleting invoice:", err);
+      alert(err instanceof Error ? err.message : "Error al eliminar la factura");
     }
   };
 
@@ -2581,6 +2610,22 @@ export default function App() {
                             </span>
                           </div>
                         );
+                        if (col.id === 'actions') return (
+                          <div key={col.id} className="p-1 flex items-center justify-center">
+                            {(inv.paid_amount || 0) === 0 && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsDeletingInvoice(inv);
+                                }}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded-sm transition-colors"
+                                title="Eliminar Factura"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        );
                         return null;
                       })}
                     </div>
@@ -3122,6 +3167,51 @@ export default function App() {
                   <button 
                     onClick={() => handleDeletePayment(isDeletingPayment)}
                     className="flex-1 py-4 bg-red-600 text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isDeletingInvoice && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+            >
+              <div className="p-6 bg-red-600 text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Factura</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Acción Irreversible</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsDeletingInvoice(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+              </div>
+              <div className="p-8 flex flex-col gap-6 text-center">
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar la factura <span className="underline">{isDeletingInvoice.invoice_number}</span>?</p>
+                  <p className="text-[10px] opacity-50 font-medium leading-relaxed uppercase tracking-tight">Esta acción eliminará permanentemente la factura y no se puede deshacer.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setIsDeletingInvoice(null)}
+                    className="py-3 bg-[#F5F5F4] text-[#0A0A0A] rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-[#E5E5E4] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteInvoice(isDeletingInvoice.id)}
+                    className="py-3 bg-red-600 text-white rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
                   >
                     Eliminar
                   </button>

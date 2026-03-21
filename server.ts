@@ -750,6 +750,30 @@ app.delete("/api/payments/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/invoices/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Check for associated payments
+    const payments = await db.execute({
+      sql: "SELECT id FROM payments WHERE invoice_id = ?",
+      args: [id]
+    });
+
+    if (payments.rows.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar una factura que tiene liquidaciones asociadas." });
+    }
+
+    await db.execute({
+      sql: "DELETE FROM invoices WHERE id = ?",
+      args: [id]
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
