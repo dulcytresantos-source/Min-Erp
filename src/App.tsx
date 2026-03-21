@@ -335,9 +335,13 @@ function SortableHeader({ id, label, sortKey, sortConfig, onSort, isLast }: any)
 export default function App() {
   const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements'>('suppliers');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
+  const genericSupplier = useMemo(() => 
+    suppliers.find(s => s.is_generic && s.company_id === activeCompanyId),
+    [suppliers, activeCompanyId]
+  );
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [movementsFilterSupplierId, setMovementsFilterSupplierId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'General' | 'Comunicación' | 'Facturación' | 'Pagos' | 'Envíos' | 'Internacional' | 'Precios'>('General');
@@ -373,7 +377,6 @@ export default function App() {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [systemDate, setSystemDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [showSettings, setShowSettings] = useState(false);
-  const [backupPath, setBackupPath] = useState<string>("C:\\Backups\\DocLedger");
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', address: '', cif: '' });
@@ -381,7 +384,6 @@ export default function App() {
   const [isDeletingCompany, setIsDeletingCompany] = useState<Company | null>(null);
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
-  const [exportConsoleData, setExportConsoleData] = useState<{ title: string; data: string; filename: string } | null>(null);
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
 
   const [supplierColumns, setSupplierColumns] = useState([
@@ -954,8 +956,7 @@ export default function App() {
       let finalConcept = proposalConcept || "Factura genérica";
 
       if (useGenericInProposal) {
-        // Find the generic supplier for this company
-        const genericSupplier = suppliers.find(s => s.is_generic && s.company_id === activeCompanyId);
+        // Use the generic supplier for this company
         if (!genericSupplier) {
           throw new Error("No existe un proveedor genérico configurado para esta empresa. Por favor, marca uno en la ficha de proveedor.");
         }
@@ -1384,129 +1385,6 @@ export default function App() {
     }
   };
 
-  const handleExportHistory = () => {
-    const dataToExport = filteredAndSortedInvoices.map(inv => ({
-      "Nº Prov": inv.supplier_id || "",
-      "Proveedor": inv.supplier_name || "",
-      "CIF": inv.supplier_cif || "",
-      "DOC (Int)": inv.doc_id || "",
-      "DOCEXT (Ext)": inv.doc_ext || "",
-      "Referencia": inv.invoice_number || "",
-      "Fecha": formatDate(inv.issue_date),
-      "Total": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.total_amount || 0),
-      "Pagado": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.paid_amount || 0),
-      "Estado": inv.status === 'Paid' ? 'LIQUIDADA' : inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'
-    }));
-    
-    if (dataToExport.length === 0) return;
-    
-    const headers = Object.keys(dataToExport[0]).join("\t");
-    const rows = dataToExport.map(row => 
-      Object.values(row).map(value => {
-        const strValue = String(value);
-        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
-      }).join("\t")
-    );
-    
-    const tsvContent = [headers, ...rows].join("\n");
-    setExportConsoleData({
-      title: "Backup Histórico de Facturas",
-      data: tsvContent,
-      filename: `Historico_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
-    });
-  };
-
-  const handleExportMovements = () => {
-    const dataToExport = groupedInvoices.map(inv => {
-      const lastPayment = inv.payments && inv.payments.length > 0 
-        ? [...inv.payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-        : null;
-      
-      const bankIds = inv.payments && inv.payments.length > 0
-        ? inv.payments.map(p => p.bank_movement_id).filter(Boolean).join(", ")
-        : "";
-
-      return {
-        "Proveedor": inv.supplier_name || "",
-        "Nº Prov": inv.supplier_id || "",
-        "DOC (Int)": inv.doc_id || "",
-        "DOCEXT (Ext)": inv.doc_ext || "",
-        "Referencia": inv.reference || "",
-        "Fecha Factura": formatDate(inv.date),
-        "Importe Total": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.amount || 0),
-        "Importe Pendiente": new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(inv.pending || 0),
-        "Estado": inv.status,
-        "Fecha Liq (Última)": lastPayment ? formatDate(lastPayment.date) : "---",
-        "Bank ID(s)": bankIds || "---"
-      };
-    });
-    
-    if (dataToExport.length === 0) return;
-    
-    const headers = Object.keys(dataToExport[0]).join("\t");
-    const rows = dataToExport.map(row => 
-      Object.values(row).map(value => {
-        const strValue = String(value);
-        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
-      }).join("\t")
-    );
-    
-    const tsvContent = [headers, ...rows].join("\n");
-    setExportConsoleData({
-      title: "Backup Movimientos Proveedor",
-      data: tsvContent,
-      filename: `Movimientos_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
-    });
-  };
-
-  const handleExportMaestro = () => {
-    // Export all suppliers
-    const supplierData = suppliers.map(s => ({
-      "Tipo": "PROVEEDOR",
-      "ID": s.id,
-      "Nombre": s.name,
-      "CIF": s.cif,
-      "Email": s.email || "",
-      "Teléfono": s.phone || "",
-      "Dirección": s.address || "",
-      "IBAN": s.iban || "",
-      "Categoría": s.category || ""
-    }));
-
-    // Export all invoices
-    const invoiceData = invoices.map(inv => ({
-      "Tipo": "FACTURA",
-      "ID": inv.id,
-      "Doc ID": inv.doc_id,
-      "Doc Ext": inv.doc_ext,
-      "Proveedor ID": inv.supplier_id,
-      "Nº Factura": inv.invoice_number,
-      "Fecha": formatDate(inv.issue_date),
-      "Vencimiento": formatDate(inv.due_date),
-      "Total": inv.total_amount,
-      "Estado": inv.status
-    }));
-
-    // Combine into a single TSV with a "Tipo" column to distinguish
-    const allData = [...supplierData, ...invoiceData];
-    if (allData.length === 0) return;
-
-    const headers = Object.keys(allData[0]).join("\t");
-    const rows = allData.map(row => 
-      Object.values(row).map(value => {
-        const strValue = String(value);
-        return strValue.replace(/\t/g, ' ').replace(/\n/g, ' ');
-      }).join("\t")
-    );
-
-    const tsvContent = [headers, ...rows].join("\n");
-    setExportConsoleData({
-      title: "Backup Maestro (Todo)",
-      data: tsvContent,
-      filename: `Maestro_${format(new Date(), 'yyyyMMdd_HHmm')}.tsv`
-    });
-  };
-
   const sortedSuppliers = useMemo(() => {
     const filtered = suppliers.filter(s => 
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1680,46 +1558,6 @@ export default function App() {
                   className="w-full px-3 py-2 bg-[#F5F5F4] border-none rounded-sm text-[11px] font-bold outline-none focus:ring-1 focus:ring-[#0A0A0A]/10"
                 />
                 <p className="text-[9px] mt-2 opacity-40 italic">Esta fecha se usará como referencia para los filtros inteligentes (M, A, etc.)</p>
-              </div>
-
-              <div className="pt-6 border-t border-[#0A0A0A]/10">
-                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-2">Backup & Exportación</label>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[8px] font-bold uppercase tracking-[0.2em] opacity-30 block mb-1">Ruta de Backup (Local)</label>
-                    <input 
-                      type="text" 
-                      value={backupPath}
-                      onChange={(e) => setBackupPath(e.target.value)}
-                      placeholder="Ej: C:\Users\Admin\Backups"
-                      className="w-full px-3 py-2 bg-[#F5F5F4] border-none rounded-sm text-[10px] font-bold outline-none focus:ring-1 focus:ring-[#0A0A0A]/10"
-                    />
-                  </div>
-                  <button 
-                    onClick={handleExportMovements}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-emerald-700 transition-all"
-                  >
-                    <Download size={12} />
-                    Backup Movimientos
-                  </button>
-                  <button 
-                    onClick={handleExportHistory}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-emerald-700 transition-all"
-                  >
-                    <Download size={12} />
-                    Backup Histórico
-                  </button>
-                  <button 
-                    onClick={handleExportMaestro}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20"
-                  >
-                    <Terminal size={12} />
-                    Backup Maestro (Todo)
-                  </button>
-                  <p className="text-[8px] opacity-40 italic leading-tight">
-                    Nota: Debido a restricciones del navegador, el archivo se descargará en tu carpeta de descargas. Usa la ruta indicada arriba para organizar tus archivos manualmente.
-                  </p>
-                </div>
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
@@ -2130,14 +1968,13 @@ export default function App() {
                           <button 
                             onClick={() => handleToggleGeneric(selectedSupplier.id, !!selectedSupplier.is_generic)}
                             className={cn(
-                              "w-fit px-3 py-1 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all flex items-center gap-2",
+                              "w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all",
                               selectedSupplier.is_generic 
-                                ? "bg-violet-600 text-white" 
-                                : "bg-[#F5F5F4] text-[#0A0A0A]/40 hover:bg-[#E4E3E0]"
+                                ? "bg-violet-600 border-violet-600 text-white" 
+                                : "border-[#0A0A0A]/10 text-transparent hover:border-[#0A0A0A]/30"
                             )}
                           >
-                            <div className={cn("w-1.5 h-1.5 rounded-full", selectedSupplier.is_generic ? "bg-white" : "bg-[#0A0A0A]/20")} />
-                            {selectedSupplier.is_generic ? "Activado" : "Desactivado"}
+                            <Check size={18} />
                           </button>
                         </div>
                       </div>
@@ -2880,38 +2717,61 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex flex-col gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Nombre Fiscal</label>
-                    <input 
-                      type="text" 
-                      value={proposal.name}
-                      onChange={(e) => setProposal({...proposal, name: e.target.value})}
-                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">CIF/NIF</label>
-                    <input 
-                      type="text" 
-                      value={proposal.cif}
-                      readOnly
-                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none opacity-50 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Email</label>
-                    <input 
-                      type="text" 
-                      value={proposal.email}
-                      onChange={(e) => setProposal({...proposal, email: e.target.value})}
-                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none"
-                    />
-                  </div>
+                  {!useGenericInProposal ? (
+                    <>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Nombre Fiscal</label>
+                        <input 
+                          type="text" 
+                          value={proposal.name}
+                          onChange={(e) => setProposal({...proposal, name: e.target.value})}
+                          className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">CIF/NIF</label>
+                        <input 
+                          type="text" 
+                          value={proposal.cif}
+                          readOnly
+                          className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none opacity-50 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Email</label>
+                        <input 
+                          type="text" 
+                          value={proposal.email}
+                          onChange={(e) => setProposal({...proposal, email: e.target.value})}
+                          className="w-full px-4 py-3 bg-[#F5F5F4] rounded-xl border-none outline-none"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-6 bg-violet-50 border border-violet-100 rounded-2xl flex flex-col gap-2">
+                      <div className="flex items-center gap-3 text-violet-600">
+                        <CheckCircle2 size={24} />
+                        <h4 className="font-bold uppercase tracking-widest text-sm">Asociación Genérica</h4>
+                      </div>
+                      <p className="text-xs text-violet-600/70 font-medium">
+                        Esta factura se asociará al proveedor genérico configurado en el sistema.
+                      </p>
+                      {genericSupplier && (
+                        <div className="mt-2 pt-2 border-t border-violet-200">
+                          <span className="text-[10px] text-violet-600/50 font-bold uppercase tracking-widest block mb-1">Proveedor Destino</span>
+                          <span className="text-sm font-bold text-violet-900">{genericSupplier.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   <div className="pt-4 border-t border-black/5 flex flex-col gap-4">
                     <label className="flex items-center gap-3 cursor-pointer group">
                       <div 
-                        onClick={() => setUseGenericInProposal(!useGenericInProposal)}
+                        onClick={() => {
+                          setUseGenericInProposal(!useGenericInProposal);
+                          setUploadError(null);
+                        }}
                         className={cn(
                           "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
                           useGenericInProposal ? "bg-[#0A0A0A] border-[#0A0A0A]" : "border-[#0A0A0A]/10 group-hover:border-[#0A0A0A]/30"
@@ -2919,8 +2779,24 @@ export default function App() {
                       >
                         {useGenericInProposal && <Check size={14} className="text-white" />}
                       </div>
-                      <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-opacity">Asociar a Proveedor Genérico</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-opacity">Asociar a Proveedor Genérico</span>
+                    {useGenericInProposal && genericSupplier && (
+                          <span className="text-[10px] text-violet-600 font-bold uppercase tracking-widest">
+                            Listo para asociar
+                          </span>
+                        )}
+                      </div>
                     </label>
+
+                    {useGenericInProposal && !genericSupplier && (
+                      <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600">
+                        <AlertCircle size={20} />
+                        <p className="text-xs font-bold uppercase tracking-widest">
+                          No existe un proveedor genérico configurado.
+                        </p>
+                      </div>
+                    )}
 
                     {useGenericInProposal && (
                       <motion.div 
@@ -2958,7 +2834,7 @@ export default function App() {
                         Procesando...
                       </>
                     ) : (
-                      "Dar de Alta y Asociar"
+                      useGenericInProposal ? "Asociar a Genérico" : "Dar de Alta y Asociar"
                     )}
                   </button>
                 </div>
@@ -3250,52 +3126,6 @@ export default function App() {
                     Eliminar
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {exportConsoleData && (
-          <div className="fixed inset-0 bg-[#0A0A0A]/90 backdrop-blur-sm flex items-center justify-center p-6 z-[70]">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[#1A1A1A] rounded-sm w-full max-w-4xl h-[80vh] shadow-2xl overflow-hidden border border-white/10 flex flex-col"
-            >
-              <div className="p-4 bg-[#0A0A0A] text-white flex justify-between items-center border-b border-white/5">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-emerald-600 rounded-sm flex items-center justify-center">
-                    <Terminal size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold tracking-widest uppercase">{exportConsoleData.title}</h3>
-                    <p className="text-[8px] opacity-40 uppercase tracking-[0.2em] font-bold">Listo para copiar y pegar en Excel</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(exportConsoleData.data);
-                      alert("Datos copiados al portapapeles");
-                    }}
-                    className="px-4 py-1.5 bg-emerald-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
-                  >
-                    <Copy size={12} />
-                    Copiar Todo
-                  </button>
-                  <button onClick={() => setExportConsoleData(null)} className="p-1.5 opacity-40 hover:opacity-100 transition-opacity text-white"><X size={20} /></button>
-                </div>
-              </div>
-              <div className="flex-1 p-6 overflow-auto font-mono text-[10px] text-emerald-500/80 leading-relaxed whitespace-pre bg-[#0A0A0A]">
-                {exportConsoleData.data}
-              </div>
-              <div className="p-4 bg-[#0A0A0A] border-t border-white/5 flex justify-between items-center">
-                <div className="text-left">
-                  <p className="text-[8px] text-white/40 font-bold uppercase tracking-widest">Ruta de Destino Sugerida:</p>
-                  <p className="text-[9px] text-emerald-500 font-mono mt-1">{backupPath || "No definida"} / {exportConsoleData.filename}</p>
-                </div>
-                <p className="text-[8px] text-white/20 font-bold uppercase tracking-[0.3em]">Selecciona el texto, copia (Ctrl+C) y pega en Excel</p>
               </div>
             </motion.div>
           </div>
