@@ -77,7 +77,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true });
     }
 
-    res.setHeader("Allow", ["GET", "PATCH"]);
+    if (method === "DELETE") {
+      if (!id || !companyId) {
+        return res.status(400).json({ error: "id and companyId are required" });
+      }
+
+      // Check for associated invoices
+      const invoices = await db.execute({
+        sql: "SELECT id FROM invoices WHERE supplier_id = ? AND company_id = ?",
+        args: [id as string, companyId],
+      });
+
+      if (invoices.rows.length > 0) {
+        return res.status(400).json({ 
+          error: "No se puede eliminar el proveedor porque tiene facturas asociadas." 
+        });
+      }
+
+      await db.execute({
+        sql: "DELETE FROM suppliers WHERE id = ? AND company_id = ?",
+        args: [id as string, companyId],
+      });
+
+      return res.status(200).json({ success: true });
+    }
+
+    res.setHeader("Allow", ["GET", "PATCH", "DELETE"]);
     return res.status(405).end(`Método ${method} no permitido`);
   } catch (error) {
     console.error(`Error en /api/suppliers/${id} [${method}]:`, error);
