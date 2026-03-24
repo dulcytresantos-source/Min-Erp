@@ -1670,28 +1670,32 @@ export default function App() {
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
-                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Versión de la App</label>
+                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Versión del Sistema</label>
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase tracking-widest opacity-60">Publicada</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-[#0A0A0A]/10 px-2 py-1 rounded-sm">V6.4</span>
+                    <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.6</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase tracking-widest opacity-60">En Pruebas</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.5</span>
-                  </div>
-                  <div className="pt-2 border-t border-[#0A0A0A]/5 flex items-center gap-2">
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full animate-pulse",
-                      window.location.hostname.includes('-dev-') ? "bg-violet-600" : "bg-green-500"
-                    )} />
-                    <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">
-                      Entorno: {window.location.hostname.includes('-dev-') ? "Pruebas" : "Producción"}
-                    </span>
+                  
+                  <div className="pt-3 border-t border-[#0A0A0A]/5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full animate-pulse",
+                        window.location.hostname.includes('-dev-') ? "bg-violet-600" : "bg-green-500"
+                      )} />
+                      <span className="text-[10px] font-bold uppercase tracking-tight">
+                        {window.location.hostname.includes('-dev-') ? "Entorno de Pruebas" : "Entorno de Producción"}
+                      </span>
+                    </div>
+                    <p className="text-[8px] opacity-40 leading-tight uppercase tracking-widest">
+                      {window.location.hostname.includes('-dev-') 
+                        ? "Estás viendo los cambios en desarrollo" 
+                        : "Esta es la versión compartida/publicada"}
+                    </p>
                   </div>
                 </div>
-                <p className="text-[8px] mt-2 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.5 - Gestión de Proveedores Genéricos, Trazabilidad de Conceptos y Control de Versiones.
+                <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
+                  DocLedger V6.6 - Simplificación de sistema de versiones y mejoras de interfaz.
                 </p>
               </div>
             </div>

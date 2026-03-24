@@ -1,1 +1,0 @@
-DocLedger V6.5 - Gestión de Proveedores Genéricos, Trazabilidad de Conceptos y Control de Versiones.
