@@ -1,0 +1,7 @@
+DocLedger V6.12 - Registro de Cambios:
+- [ESTADO: ESTABLE / PRODUCCIÓN]
+- Corrección de error "id and companyId are required" al marcar proveedor genérico.
+- Refuerzo de la API para detectar companyId tanto en Query como en Body.
+- Implementación de validación "Solo 1 proveedor genérico por empresa" en POST y PATCH.
+- Sincronización de versión a V6.12.
+- Verificado: La gestión de proveedores genéricos es ahora independiente por empresa.

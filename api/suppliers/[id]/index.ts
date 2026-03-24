@@ -9,7 +9,7 @@ const db = createClient({
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method } = req;
   const { id } = req.query;
-  const companyId = (req.query.companyId as string) ?? null;
+  const companyId = (req.query.companyId as string) || (req.body?.company_id as string) || null;
 
   try {
     if (method === "GET") {

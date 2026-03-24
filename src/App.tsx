@@ -1104,11 +1104,10 @@ export default function App() {
     }
     if (!activeCompanyId) return;
     try {
-      const res = await fetch(`/api/suppliers/${supplierId}`, {
+      const res = await fetch(`/api/suppliers/${supplierId}?companyId=${activeCompanyId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          company_id: activeCompanyId,
           is_generic: !currentValue ? 1 : 0
         })
       });
@@ -1733,7 +1732,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.11 - Solución error 405 en Vercel, configuración vercel.json y optimización serverless para gestión de proveedores.
+                  DocLedger V6.12 - [VERIFICADA] Solución error 405 y corrección de gestión de proveedores genéricos por empresa.
                 </p>
               </div>
             </div>

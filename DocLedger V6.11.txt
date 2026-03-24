@@ -1,6 +1,0 @@
-DocLedger V6.11 - Registro de Cambios:
-- Solución definitiva al error 405 (Method Not Allowed) en Vercel.
-- Implementación de vercel.json para configuración de rutas y métodos API.
-- Optimización de server.ts para compatibilidad total con Vercel Serverless Functions.
-- Refactorización del sistema de borrado de proveedores con logs de depuración.
-- Sincronización de versión visual y de sistema a V6.11.

@@ -30,10 +30,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (method === "POST") {
-      const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact } = req.body;
+      const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic } = req.body;
       
       if (!name || !cif) {
         return res.status(400).json({ error: "Nombre y CIF son obligatorios" });
+      }
+
+      if (is_generic === 1) {
+        // Check if another generic supplier exists for this company
+        const existingGeneric = await db.execute({
+          sql: "SELECT name FROM suppliers WHERE is_generic = 1 AND company_id = ?",
+          args: [company_id],
+        });
+        if (existingGeneric.rows.length > 0) {
+          return res.status(400).json({ error: `Ya existe un proveedor genérico para esta compañía: ${existingGeneric.rows[0].name}` });
+        }
       }
 
       // Generate PRovXXX ID based on max current ID FOR THIS COMPANY
@@ -54,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const id = `${company_id}-PRov${nextNum.toString().padStart(3, '0')}`;
       
       await db.execute({
-        sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         args: [
           id, 
           company_id ?? null, 
@@ -70,7 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           phone ?? null, 
           name2 ?? null, 
           address2 ?? null, 
-          main_contact ?? null
+          main_contact ?? null,
+          is_generic ?? 0
         ],
       });
       return res.status(201).json({ id });
