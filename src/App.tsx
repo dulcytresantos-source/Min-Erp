@@ -1712,7 +1712,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.8</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.9</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
