@@ -1,1 +1,0 @@
-DocLedger V6.8 - Eliminación de proveedores con validación de integridad.

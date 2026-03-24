@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -846,4 +846,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

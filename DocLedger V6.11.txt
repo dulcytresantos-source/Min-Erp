@@ -1,0 +1,5 @@
+DocLedger V6.11 - Registro de Cambios:
+- Configuración de vercel.json para permitir métodos DELETE en producción.
+- Exportación de 'app' en server.ts para compatibilidad con Vercel Serverless Functions.
+- Ajuste de arranque del servidor para detectar entornos Vercel.
+- Actualización de versión visual y de sistema a V6.11.
