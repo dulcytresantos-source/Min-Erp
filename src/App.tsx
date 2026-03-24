@@ -1733,7 +1733,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.8 - Eliminación de proveedores con validación de integridad.
+                  DocLedger V6.9 - Reubicación del botón de eliminación de proveedores.
                 </p>
               </div>
             </div>
@@ -1914,15 +1914,6 @@ export default function App() {
                       </button>
                     </>
                   )}
-                  {!isCreatingSupplier && (
-                    <button 
-                      onClick={() => setIsDeletingSupplier(selectedSupplier)}
-                      className="px-4 py-2 bg-red-50 text-red-600 rounded-sm font-bold uppercase tracking-widest hover:bg-red-100 transition-all flex items-center gap-2 border border-red-200"
-                    >
-                      <Trash2 size={16} />
-                      Eliminar Proveedor
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1962,6 +1953,15 @@ export default function App() {
                                 isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                               )}
                             />
+                            {!isCreatingSupplier && (
+                              <button 
+                                onClick={() => setIsDeletingSupplier(selectedSupplier)}
+                                className="p-1.5 bg-red-50 text-red-600 rounded-sm hover:bg-red-100 transition-all border border-red-100"
+                                title="Eliminar Proveedor"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
                             <button 
                               onClick={handleNewSupplier}
                               className="p-1.5 bg-[#F5F5F4] rounded-sm hover:bg-[#E4E3E0]"

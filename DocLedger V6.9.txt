@@ -1,0 +1,2 @@
+DocLedger V6.9
+- Reubicación del botón de eliminación de proveedores en la ficha del proveedor, antes del botón de nuevo proveedor (+).
