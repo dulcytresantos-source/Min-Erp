@@ -1668,6 +1668,32 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
+              <div className="pt-6 border-t border-[#0A0A0A]/10">
+                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Versión de la App</label>
+                <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase tracking-widest opacity-60">Publicada</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-[#0A0A0A]/10 px-2 py-1 rounded-sm">V6.4</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase tracking-widest opacity-60">En Pruebas</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.5</span>
+                  </div>
+                  <div className="pt-2 border-t border-[#0A0A0A]/5 flex items-center gap-2">
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full animate-pulse",
+                      window.location.hostname.includes('-dev-') ? "bg-violet-600" : "bg-green-500"
+                    )} />
+                    <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">
+                      Entorno: {window.location.hostname.includes('-dev-') ? "Pruebas" : "Producción"}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[8px] mt-2 opacity-30 italic leading-relaxed uppercase tracking-widest">
+                  DocLedger V6.5 - Gestión de Proveedores Genéricos, Trazabilidad de Conceptos y Control de Versiones.
+                </p>
+              </div>
             </div>
           </motion.div>
         )}
