@@ -13,45 +13,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (method === "DELETE") {
       if (!id) {
-        return res.status(400).json({ error: "ID de liquidación requerido" });
+        return res.status(400).json({ error: "id is required" });
       }
 
       // Get invoice_id before deleting
       const payment = await db.execute({
         sql: "SELECT invoice_id FROM payments WHERE id = ?",
-        args: [id as string]
+        args: [Number(id)],
       });
 
       if (payment.rows.length === 0) {
-        return res.status(404).json({ error: "Liquidación no encontrada" });
+        return res.status(404).json({ error: "Pago no encontrado" });
       }
 
-      const invoiceId = payment.rows[0].invoice_id;
+      const invoice_id = payment.rows[0].invoice_id;
 
       await db.execute({
         sql: "DELETE FROM payments WHERE id = ?",
-        args: [id as string]
+        args: [Number(id)],
       });
 
-      // Recalculate invoice status
+      // Update invoice status
       const invData = await db.execute({
         sql: `
           SELECT total_amount, 
           (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE invoice_id = ?) as total_paid
           FROM invoices WHERE id = ?
         `,
-        args: [invoiceId as number, invoiceId as number],
+        args: [invoice_id, invoice_id],
       });
 
       if (invData.rows.length > 0) {
         const { total_amount, total_paid } = invData.rows[0] as any;
         let status = "Pending";
-        if (total_paid > 0 && total_paid < total_amount) status = "Partial";
-        if (total_paid >= total_amount && total_amount > 0) status = "Paid";
+        if (total_paid >= total_amount - 0.01) status = "Paid";
+        else if (total_paid > 0) status = "Partial";
         
         await db.execute({
           sql: "UPDATE invoices SET status = ? WHERE id = ?",
-          args: [status, invoiceId as number],
+          args: [status, invoice_id],
         });
       }
 
