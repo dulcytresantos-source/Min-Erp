@@ -645,6 +645,7 @@ app.post("/api/invoices", async (req, res) => {
 
 app.get("/api/invoices/:id", async (req, res) => {
   const { id } = req.params;
+  console.log(`[GET] Fetching invoice details for ID: ${id}`);
   try {
     const result = await db.execute({
       sql: `
@@ -655,15 +656,18 @@ app.get("/api/invoices/:id", async (req, res) => {
         JOIN suppliers s ON i.supplier_id = s.id
         WHERE i.id = ?
       `,
-      args: [id]
+      args: [Number(id)]
     });
 
     if (result.rows.length === 0) {
+      console.warn(`[GET] Invoice ${id} not found`);
       return res.status(404).json({ error: "Factura no encontrada" });
     }
 
+    console.log(`[GET] Invoice ${id} found:`, result.rows[0].doc_id);
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(`[GET] Error fetching invoice ${id}:`, err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
@@ -671,6 +675,7 @@ app.get("/api/invoices/:id", async (req, res) => {
 app.patch("/api/invoices/:id", async (req, res) => {
   const { concept, doc_ext, issue_date, due_date } = req.body;
   const { id } = req.params;
+  console.log(`[PATCH] Updating invoice ${id}:`, { concept, doc_ext, issue_date, due_date });
   try {
     const updates: string[] = [];
     const args: any[] = [];
@@ -696,14 +701,16 @@ app.patch("/api/invoices/:id", async (req, res) => {
       return res.status(400).json({ error: "No se proporcionaron campos para actualizar" });
     }
 
-    args.push(id);
+    args.push(Number(id));
 
     await db.execute({
       sql: `UPDATE invoices SET ${updates.join(", ")} WHERE id = ?`,
       args,
     });
+    console.log(`[PATCH] Invoice ${id} updated successfully`);
     res.json({ success: true });
   } catch (err) {
+    console.error(`[PATCH] Error updating invoice ${id}:`, err);
     res.status(500).json({ error: (err as Error).message });
   }
 });

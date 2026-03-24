@@ -17,7 +17,7 @@ interface InvoiceData {
   due_date: string;
   total_amount: number;
   concept: string;
-  supplier_id: string;
+  supplier_id: string | number;
   supplier_name: string;
   supplier_cif: string;
   supplier_address: string;
@@ -62,6 +62,7 @@ export default function InvoiceDocument({ invoiceId, onBack }: InvoiceDocumentPr
   }, [invoiceId]);
 
   const fetchInvoice = async () => {
+    console.log(`[InvoiceDocument] Fetching invoice with ID: ${invoiceId}`);
     if (!invoiceId) {
       setError("ID de factura no válido");
       setLoading(false);
@@ -70,11 +71,14 @@ export default function InvoiceDocument({ invoiceId, onBack }: InvoiceDocumentPr
     setLoading(true);
     try {
       const res = await fetch(`/api/invoices/${invoiceId}`);
+      console.log(`[InvoiceDocument] Response status: ${res.status}`);
       const contentType = res.headers.get("content-type");
+      console.log(`[InvoiceDocument] Content-Type: ${contentType}`);
       
       if (!res.ok) {
         if (contentType && contentType.includes("application/json")) {
           const errorData = await res.json();
+          console.error(`[InvoiceDocument] API Error:`, errorData);
           throw new Error(errorData.error || `Error ${res.status}`);
         } else {
           const text = await res.text();
@@ -85,6 +89,7 @@ export default function InvoiceDocument({ invoiceId, onBack }: InvoiceDocumentPr
 
       if (contentType && contentType.includes("application/json")) {
         const data = await res.json();
+        console.log(`[InvoiceDocument] Data received:`, data);
         setInvoice(data);
       } else {
         const text = await res.text();
@@ -92,6 +97,7 @@ export default function InvoiceDocument({ invoiceId, onBack }: InvoiceDocumentPr
         throw new Error("El servidor devolvió un formato inesperado (no JSON)");
       }
     } catch (err) {
+      console.error(`[InvoiceDocument] Fetch error:`, err);
       setError((err as Error).message);
     } finally {
       setLoading(false);
@@ -239,7 +245,7 @@ export default function InvoiceDocument({ invoiceId, onBack }: InvoiceDocumentPr
         <div className="flex border border-black">
           {/* Supplier Info */}
           <div className="flex-1 p-6 border-r border-black flex flex-col gap-1">
-            <p className="text-[12px] font-bold">{invoice.supplier_id.split('-').pop()}</p>
+            <p className="text-[12px] font-bold">{String(invoice.supplier_id).split('-').pop()}</p>
             <p className="text-[14px] font-black uppercase tracking-tight">{invoice.supplier_name}</p>
             <p className="text-[11px] opacity-60">{invoice.supplier_address}</p>
             <p className="text-[11px] opacity-60 uppercase">{invoice.supplier_zip_code} {invoice.supplier_city}</p>
