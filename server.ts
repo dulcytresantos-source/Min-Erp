@@ -643,12 +643,64 @@ app.post("/api/invoices", async (req, res) => {
   }
 });
 
-app.patch("/api/invoices/:id", async (req, res) => {
-  const { concept } = req.body;
+app.get("/api/invoices/:id", async (req, res) => {
+  const { id } = req.params;
   try {
+    const result = await db.execute({
+      sql: `
+        SELECT i.*, s.name as supplier_name, s.cif as supplier_cif, s.address as supplier_address, 
+               s.city as supplier_city, s.province as supplier_province, s.zip_code as supplier_zip_code,
+               s.country_code as supplier_country_code
+        FROM invoices i
+        JOIN suppliers s ON i.supplier_id = s.id
+        WHERE i.id = ?
+      `,
+      args: [id]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Factura no encontrada" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch("/api/invoices/:id", async (req, res) => {
+  const { concept, doc_ext, issue_date, due_date } = req.body;
+  const { id } = req.params;
+  try {
+    const updates: string[] = [];
+    const args: any[] = [];
+
+    if (concept !== undefined) {
+      updates.push("concept = ?");
+      args.push(concept);
+    }
+    if (doc_ext !== undefined) {
+      updates.push("doc_ext = ?");
+      args.push(doc_ext);
+    }
+    if (issue_date !== undefined) {
+      updates.push("issue_date = ?");
+      args.push(issue_date);
+    }
+    if (due_date !== undefined) {
+      updates.push("due_date = ?");
+      args.push(due_date);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No se proporcionaron campos para actualizar" });
+    }
+
+    args.push(id);
+
     await db.execute({
-      sql: "UPDATE invoices SET concept = ? WHERE id = ?",
-      args: [concept ?? null, req.params.id],
+      sql: `UPDATE invoices SET ${updates.join(", ")} WHERE id = ?`,
+      args,
     });
     res.json({ success: true });
   } catch (err) {

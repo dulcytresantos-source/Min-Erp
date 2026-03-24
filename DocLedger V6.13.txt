@@ -1,0 +1,13 @@
+DocLedger V6.13 - Registro de Cambios:
+- [NUEVA FUNCIÓN: DOCUMENTO DE FACTURA]
+- Implementación de vista de documento formal para facturas.
+- Acceso desde "Movimientos Proveedor" pinchando directamente en el botón verde "Factura" (eliminado icono azul redundante).
+- Acceso desde "Detalle Proveedor" pinchando en el número de documento (Doc).
+- Sistema de edición por doble click en campos permitidos:
+    * DocExt (ID externo)
+    * Fecha (Emisión)
+    * Fecha Vto (Vencimiento) - Con validación de fecha posterior.
+    * Concepto
+- Campos no editables protegidos (Doc interno, Datos Proveedor, Importes).
+- Corrección de rutas API en server.ts para evitar errores de carga de documento.
+- Sincronización de versión a V6.13.

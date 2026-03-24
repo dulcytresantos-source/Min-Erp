@@ -30,7 +30,8 @@ import {
   Terminal,
   Copy,
   GripVertical,
-  MoveHorizontal
+  MoveHorizontal,
+  FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -56,6 +57,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format } from "date-fns";
 import { parseInvoice } from "./lib/gemini";
+import InvoiceDocument from "./components/InvoiceDocument";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -342,7 +344,9 @@ export default function App() {
     return parts.length > 1 ? parts[parts.length - 1] : id;
   };
 
-  const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements'>('suppliers');
+  const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements' | 'invoice-document'>('suppliers');
+  const [previousView, setPreviousView] = useState<'movements' | 'supplier-detail' | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
   const genericSupplier = useMemo(() => 
@@ -1711,7 +1715,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.11</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.13</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1732,7 +1736,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.12 - [VERIFICADA] Solución error 405 y corrección de gestión de proveedores genéricos por empresa.
+                  DocLedger V6.13 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
                 </p>
               </div>
             </div>
@@ -2398,7 +2402,17 @@ export default function App() {
                               if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
                               if (col.id === 'type') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Factura</span>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedInvoiceId(inv.id);
+                                      setPreviousView('movements');
+                                      setView('invoice-document');
+                                    }}
+                                    className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-emerald-200 transition-colors"
+                                  >
+                                    Factura
+                                  </button>
                                 </div>
                               );
                               if (col.id === 'supplier_name') return (
@@ -2441,7 +2455,7 @@ export default function App() {
                               );
                               return null;
                             })}
-                            <div className="p-1 flex items-center justify-center">
+                            <div className="p-1 flex items-center justify-center gap-2">
                               {inv.pending > 0 && (
                                 <button 
                                   onClick={(e) => {
@@ -2629,7 +2643,20 @@ export default function App() {
                       style={{ gridTemplateColumns: getHistoryGridTemplate(historyColumns) }}
                     >
                       {historyColumns.map((col) => {
-                        if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold flex items-center">{inv.doc_id || "-"}</div>;
+                        if (col.id === 'doc_id') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold flex items-center">
+                            <button 
+                              onClick={() => {
+                                setSelectedInvoiceId(inv.id);
+                                setPreviousView('supplier-detail');
+                                setView('invoice-document');
+                              }}
+                              className="hover:underline text-left"
+                            >
+                              {inv.doc_id || "-"}
+                            </button>
+                          </div>
+                        );
                         if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_ext || "-"}</div>;
                         if (col.id === 'supplier_name') return (
                           <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center">
@@ -2696,7 +2723,7 @@ export default function App() {
                           </div>
                         );
                         if (col.id === 'actions') return (
-                          <div key={col.id} className="p-1 flex items-center justify-center">
+                          <div key={col.id} className="p-1 flex items-center justify-center gap-2">
                             {(inv.paid_amount || 0) === 0 && (
                               <button 
                                 onClick={(e) => {
@@ -2816,6 +2843,18 @@ export default function App() {
                 )}
               </div>
             </motion.div>
+          )}
+
+          {view === 'invoice-document' && selectedInvoiceId && (
+            <InvoiceDocument 
+              invoiceId={selectedInvoiceId} 
+              onBack={() => {
+                setView(previousView || 'movements');
+                setSelectedInvoiceId(null);
+                setPreviousView(null);
+                fetchData(); // Refresh data in case of edits
+              }} 
+            />
           )}
         </AnimatePresence>
       </main>
