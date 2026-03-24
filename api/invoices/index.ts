@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (method === "POST") {
-      const { company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount } = req.body;
+      const { company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount, concept } = req.body;
       
       if (!company_id || !supplier_id || !total_amount) {
         return res.status(400).json({ error: "Faltan campos obligatorios" });
@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const result = await db.execute({
-        sql: "INSERT INTO invoices (company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        sql: "INSERT INTO invoices (company_id, supplier_id, invoice_number, doc_id, doc_ext, issue_date, due_date, tax_base, vat, total_amount, concept) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         args: [
           company_id ?? null, 
           supplier_id ?? null, 
@@ -50,7 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           due_date ?? null, 
           tax_base ?? 0, 
           vat ?? 0, 
-          total_amount ?? null
+          total_amount ?? null,
+          concept ?? "Factura genérica"
         ],
       });
       return res.status(201).json({ id: Number(result.lastInsertRowid) });

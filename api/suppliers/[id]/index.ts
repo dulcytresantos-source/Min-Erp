@@ -39,7 +39,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ...supplier.rows[0], invoices: invoices.rows });
     }
 
-    res.setHeader("Allow", ["GET"]);
+    if (method === "PATCH") {
+      const { alias, is_generic } = req.body;
+      if (!id || !companyId) {
+        return res.status(400).json({ error: "id and companyId are required" });
+      }
+
+      if (is_generic === 1) {
+        // Check if another generic supplier exists for this company
+        const existingGeneric = await db.execute({
+          sql: "SELECT name FROM suppliers WHERE is_generic = 1 AND company_id = ? AND id != ?",
+          args: [companyId, id as string],
+        });
+        if (existingGeneric.rows.length > 0) {
+          return res.status(400).json({ error: `Ya existe un proveedor genérico para esta compañía: ${existingGeneric.rows[0].name}` });
+        }
+      }
+
+      const updates = [];
+      const args = [];
+      if (alias !== undefined) {
+        updates.push("alias = ?");
+        args.push(alias);
+      }
+      if (is_generic !== undefined) {
+        updates.push("is_generic = ?");
+        args.push(is_generic);
+      }
+      
+      if (updates.length > 0) {
+        args.push(id as string, companyId);
+        await db.execute({
+          sql: `UPDATE suppliers SET ${updates.join(", ")} WHERE id = ? AND company_id = ?`,
+          args,
+        });
+      }
+      return res.status(200).json({ success: true });
+    }
+
+    res.setHeader("Allow", ["GET", "PATCH"]);
     return res.status(405).end(`Método ${method} no permitido`);
   } catch (error) {
     console.error(`Error en /api/suppliers/${id} [${method}]:`, error);

@@ -1398,8 +1398,17 @@ export default function App() {
       });
       
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Error al eliminar la factura");
+        let errorMessage = "Error al eliminar la factura";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } else {
+          const textError = await res.text();
+          console.error("Server returned non-JSON error:", textError);
+          errorMessage = `Error del servidor (${res.status})`;
+        }
+        throw new Error(errorMessage);
       }
 
       setIsDeletingInvoice(null);
