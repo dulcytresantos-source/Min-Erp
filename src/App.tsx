@@ -1733,7 +1733,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.11 - Configuración vercel.json y compatibilidad serverless para borrado de proveedores.
+                  DocLedger V6.11 - Solución error 405 en Vercel, configuración vercel.json y optimización serverless para gestión de proveedores.
                 </p>
               </div>
             </div>
