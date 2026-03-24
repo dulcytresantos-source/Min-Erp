@@ -445,6 +445,7 @@ app.post("/api/suppliers", async (req, res) => {
 app.delete("/api/suppliers/:id", async (req, res) => {
   const { id } = req.params;
   const companyId = (req.query.companyId as string) ?? null;
+  console.log(`Attempting to delete supplier ${id} for company ${companyId}`);
   try {
     // Check for associated invoices
     const invoices = await db.execute({
