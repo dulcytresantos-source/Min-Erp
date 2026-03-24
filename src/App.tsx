@@ -336,6 +336,12 @@ function SortableHeader({ id, label, sortKey, sortConfig, onSort, isLast }: any)
 }
 
 export default function App() {
+  const formatSupplierId = (id: string) => {
+    if (!id) return "";
+    const parts = id.split('-');
+    return parts.length > 1 ? parts[parts.length - 1] : id;
+  };
+
   const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements'>('suppliers');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
@@ -1674,7 +1680,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.6</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.7</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1695,7 +1701,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.6 - Simplificación de sistema de versiones y mejoras de interfaz.
+                  DocLedger V6.7 - Numeración de proveedores independiente por empresa y correcciones de migración.
                 </p>
               </div>
             </div>
@@ -1792,7 +1798,7 @@ export default function App() {
                         <ChevronRight size={14} />
                       </div>
                       {supplierColumns.map((col) => {
-                        if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{s.id}</div>;
+                        if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{formatSupplierId(s.id)}</div>;
                         if (col.id === 'name') return (
                           <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 flex flex-col justify-center truncate">
                             <span className="font-bold text-xs truncate">{toTitleCase(s.name)}</span>
@@ -1849,7 +1855,7 @@ export default function App() {
                       {isCreatingSupplier ? "Nuevo Proveedor" : selectedSupplier.name}
                     </h2>
                     <p className="text-xs font-bold uppercase tracking-widest opacity-40">
-                      Ficha de Proveedor / {selectedSupplier.id}
+                      Ficha de Proveedor / {formatSupplierId(selectedSupplier.id)}
                     </p>
                   </div>
                 </div>
@@ -1908,7 +1914,7 @@ export default function App() {
                           <div className="flex gap-1">
                             <input 
                               readOnly={!isCreatingSupplier} 
-                              value={selectedSupplier.id} 
+                              value={formatSupplierId(selectedSupplier.id)} 
                               onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, id: e.target.value})}
                               className={cn(
                                 "flex-1 px-2 py-1.5 rounded-sm border-none outline-none font-mono text-[11px]",
@@ -2248,7 +2254,7 @@ export default function App() {
                   <h2 className="text-4xl font-bold tracking-tighter">Movimientos Proveedor</h2>
                   <p className="text-xs font-bold uppercase tracking-widest opacity-40">
                     {movementsFilterSupplierId 
-                      ? `Filtrado por: [${movementsFilterSupplierId}] ${suppliers.find(s => s.id === movementsFilterSupplierId)?.name}` 
+                      ? `Filtrado por: [${formatSupplierId(movementsFilterSupplierId)}] ${suppliers.find(s => s.id === movementsFilterSupplierId)?.name}` 
                       : "Todos los movimientos registrados"}
                   </p>
                 </div>
@@ -2268,7 +2274,7 @@ export default function App() {
                     >
                       <option value="All">TODOS LOS PROVEEDORES</option>
                       {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.id} - {s.name.toUpperCase()}</option>
+                        <option key={s.id} value={s.id}>{formatSupplierId(s.id)} - {s.name.toUpperCase()}</option>
                       ))}
                     </select>
                   </div>

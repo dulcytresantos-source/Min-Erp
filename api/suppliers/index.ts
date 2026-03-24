@@ -36,17 +36,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Nombre y CIF son obligatorios" });
       }
 
-      // Generate PRovXXX ID based on max current ID
-      const maxIdResult = await db.execute("SELECT id FROM suppliers WHERE id LIKE 'PRov%' ORDER BY id DESC LIMIT 1");
+      // Generate PRovXXX ID based on max current ID FOR THIS COMPANY
+      const maxIdResult = await db.execute({
+        sql: "SELECT id FROM suppliers WHERE company_id = ? AND id LIKE '%PRov%' ORDER BY id DESC LIMIT 1",
+        args: [company_id]
+      });
+      
       let nextNum = 1;
       if (maxIdResult.rows.length > 0) {
         const lastId = maxIdResult.rows[0].id as string;
-        const lastNum = parseInt(lastId.replace('PRov', ''));
+        const lastNumPart = lastId.split('PRov').pop();
+        const lastNum = lastNumPart ? parseInt(lastNumPart) : NaN;
         if (!isNaN(lastNum)) {
           nextNum = lastNum + 1;
         }
       }
-      const id = `PRov${nextNum.toString().padStart(3, '0')}`;
+      const id = `${company_id}-PRov${nextNum.toString().padStart(3, '0')}`;
       
       await db.execute({
         sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

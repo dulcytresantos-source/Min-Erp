@@ -187,6 +187,26 @@ async function initDb() {
       args: [defaultCompanyId],
     });
 
+    // Migration: Update supplier IDs to include company_id prefix for independent numbering
+    try {
+      const suppliersToMigrate = await db.execute("SELECT id, company_id FROM suppliers WHERE id NOT LIKE '%-%'");
+      for (const s of suppliersToMigrate.rows) {
+        const newId = `${s.company_id}-${s.id}`;
+        // Update invoices first (FK)
+        await db.execute({
+          sql: "UPDATE invoices SET supplier_id = ? WHERE supplier_id = ?",
+          args: [newId, s.id]
+        });
+        // Update supplier
+        await db.execute({
+          sql: "UPDATE suppliers SET id = ? WHERE id = ?",
+          args: [newId, s.id]
+        });
+      }
+    } catch (e) {
+      console.error("Migration of supplier IDs failed:", e);
+    }
+
     const countResult = await db.execute("SELECT COUNT(*) as count FROM suppliers");
     const count = Number(countResult.rows[0].count);
 
@@ -200,9 +220,10 @@ async function initDb() {
       ];
 
       for (const s of seedSuppliers) {
+        const newId = `${defaultCompanyId}-${s.id}`;
         await db.execute({
           sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          args: [s.id, defaultCompanyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
+          args: [newId, defaultCompanyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
         });
       }
 
@@ -377,17 +398,22 @@ app.get("/api/suppliers/cif/:cif", async (req, res) => {
 app.post("/api/suppliers", async (req, res) => {
   const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic } = req.body;
   try {
-    // Generate PRovXXX ID based on max current ID to avoid collisions
-    const maxIdResult = await db.execute("SELECT id FROM suppliers WHERE id LIKE 'PRov%' ORDER BY id DESC LIMIT 1");
+    // Generate PRovXXX ID based on max current ID FOR THIS COMPANY
+    const maxIdResult = await db.execute({
+      sql: "SELECT id FROM suppliers WHERE company_id = ? AND id LIKE '%PRov%' ORDER BY id DESC LIMIT 1",
+      args: [company_id]
+    });
+    
     let nextNum = 1;
     if (maxIdResult.rows.length > 0) {
       const lastId = maxIdResult.rows[0].id as string;
-      const lastNum = parseInt(lastId.replace('PRov', ''));
+      const lastNumPart = lastId.split('PRov').pop();
+      const lastNum = lastNumPart ? parseInt(lastNumPart) : NaN;
       if (!isNaN(lastNum)) {
         nextNum = lastNum + 1;
       }
     }
-    const id = `PRov${nextNum.toString().padStart(3, '0')}`;
+    const id = `${company_id}-PRov${nextNum.toString().padStart(3, '0')}`;
     
     await db.execute({
       sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
