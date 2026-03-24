@@ -395,6 +395,7 @@ export default function App() {
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
+  const [isDeletingSupplier, setIsDeletingSupplier] = useState<Supplier | null>(null);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -1429,6 +1430,37 @@ export default function App() {
     }
   };
 
+  const handleDeleteSupplier = async (supplierId: string) => {
+    if (!supplierId) return;
+    try {
+      const res = await fetch(`/api/suppliers/${supplierId}?companyId=${activeCompanyId}`, {
+        method: "DELETE"
+      });
+      
+      if (!res.ok) {
+        let errorMessage = "Error al eliminar el proveedor";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } else {
+          const textError = await res.text();
+          console.error("Server returned non-JSON error:", textError);
+          errorMessage = `Error del servidor (${res.status})`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      setIsDeletingSupplier(null);
+      setSelectedSupplier(null);
+      setView('suppliers');
+      await fetchData();
+    } catch (err) {
+      console.error("Error deleting supplier:", err);
+      alert(err instanceof Error ? err.message : "Error al eliminar el proveedor");
+    }
+  };
+
   const sortedSuppliers = useMemo(() => {
     const filtered = suppliers.filter(s => 
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1680,7 +1712,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.7</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.8</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1701,7 +1733,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.7 - Numeración de proveedores independiente por empresa y correcciones de migración.
+                  DocLedger V6.8 - Eliminación de proveedores con validación de integridad.
                 </p>
               </div>
             </div>
@@ -1881,6 +1913,15 @@ export default function App() {
                         Guardar Proveedor
                       </button>
                     </>
+                  )}
+                  {!isCreatingSupplier && (
+                    <button 
+                      onClick={() => setIsDeletingSupplier(selectedSupplier)}
+                      className="px-4 py-2 bg-red-50 text-red-600 rounded-sm font-bold uppercase tracking-widest hover:bg-red-100 transition-all flex items-center gap-2 border border-red-200"
+                    >
+                      <Trash2 size={16} />
+                      Eliminar Proveedor
+                    </button>
                   )}
                 </div>
               </div>
@@ -3212,6 +3253,51 @@ export default function App() {
                   <button 
                     onClick={() => handleDeletePayment(isDeletingPayment)}
                     className="flex-1 py-4 bg-red-600 text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isDeletingSupplier && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+            >
+              <div className="p-6 bg-red-600 text-white flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Proveedor</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Acción Irreversible</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsDeletingSupplier(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+              </div>
+              <div className="p-8 flex flex-col gap-6 text-center">
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar al proveedor <span className="underline">{isDeletingSupplier.name}</span>?</p>
+                  <p className="text-[10px] opacity-50 font-medium leading-relaxed uppercase tracking-tight">Solo podrás eliminarlo si no tiene facturas asociadas. Esta acción no se puede deshacer.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setIsDeletingSupplier(null)}
+                    className="py-3 bg-[#F5F5F4] text-[#0A0A0A] rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-[#E5E5E4] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteSupplier(isDeletingSupplier.id)}
+                    className="py-3 bg-red-600 text-white rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
                   >
                     Eliminar
                   </button>

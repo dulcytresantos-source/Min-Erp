@@ -442,6 +442,31 @@ app.post("/api/suppliers", async (req, res) => {
   }
 });
 
+app.delete("/api/suppliers/:id", async (req, res) => {
+  const { id } = req.params;
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    // Check for associated invoices
+    const invoices = await db.execute({
+      sql: "SELECT id FROM invoices WHERE supplier_id = ? AND company_id = ?",
+      args: [id, companyId]
+    });
+
+    if (invoices.rows.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar un proveedor que tiene facturas asociadas. Primero debes eliminar todas sus facturas." });
+    }
+
+    await db.execute({
+      sql: "DELETE FROM suppliers WHERE id = ? AND company_id = ?",
+      args: [id, companyId]
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.get("/api/suppliers/:id", async (req, res) => {
   const companyId = (req.query.companyId as string) ?? null;
   try {
