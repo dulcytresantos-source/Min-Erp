@@ -1,10 +1,10 @@
-DocLedger V6.16 - Registro de Cambios:
-- [DIAGNÓSTICO DE DATOS]
-- Implementación de rutas de depuración /api/debug-db y /api/debug-env para Vercel.
-- Mejora de robustez en la inicialización de la base de datos (initDb).
-- Captura y reporte de errores de inicialización de base de datos.
-- Verificación de datos en Turso (Confirmado: 137 facturas seguras).
-- Sincronización de versión a V6.16.
+DocLedger V6.17 - Registro de Cambios:
+- [NUEVA FUNCIÓN: ESTADO DE BASE DE DATOS]
+- Añadido panel de estado de conexión en Configuración.
+- Indicador visual (verde/rojo) de conexión en tiempo real.
+- Información del tipo de base de datos (Remote Turso vs Local).
+- Contador de registros (Empresas) para verificar integridad de datos.
+- Sincronización de versión a V6.17.
 - Mejora de robustez en API y frontend con logs detallados.
 - Tipado dinámico para IDs de proveedores (string/number).
 - [CORRECCIÓN VERCEL] Implementación de rutas dinámicas en /api/ para compatibilidad con despliegues en Vercel (solución al error 404 en min-erp).
