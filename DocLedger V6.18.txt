@@ -1,10 +1,9 @@
-DocLedger V6.17 - Registro de Cambios:
-- [NUEVA FUNCIÓN: ESTADO DE BASE DE DATOS]
-- Añadido panel de estado de conexión en Configuración.
-- Indicador visual (verde/rojo) de conexión en tiempo real.
-- Información del tipo de base de datos (Remote Turso vs Local).
-- Contador de registros (Empresas) para verificar integridad de datos.
-- Sincronización de versión a V6.17.
+DocLedger V6.18 - Registro de Cambios:
+- [DIAGNÓSTICO AVANZADO]
+- Añadido botón de "Reintentar" conexión en Configuración.
+- Visualización del estado de las variables de entorno (URL y Token).
+- Mejora en la captura de errores de inicialización.
+- Sincronización de versión a V6.18.
 - Mejora de robustez en API y frontend con logs detallados.
 - Tipado dinámico para IDs de proveedores (string/number).
 - [CORRECCIÓN VERCEL] Implementación de rutas dinámicas en /api/ para compatibilidad con despliegues en Vercel (solución al error 404 en min-erp).

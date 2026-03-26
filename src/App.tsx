@@ -407,6 +407,8 @@ export default function App() {
     companies_count: number;
     init_error: string | null;
   } | null>(null);
+  const [envStatus, setEnvStatus] = useState<any>(null);
+  const [isRefreshingDb, setIsRefreshingDb] = useState(false);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -700,17 +702,25 @@ export default function App() {
     }
   }, [activeCompanyId, fetchData, view, movementsFilterSupplierId]);
 
+  const fetchDbStatus = async () => {
+    setIsRefreshingDb(true);
+    try {
+      const res = await fetch("/api/debug-db");
+      const data = await res.json();
+      setDbStatus(data);
+      
+      const envRes = await fetch("/api/debug-env");
+      const envData = await envRes.json();
+      setEnvStatus(envData);
+    } catch (err) {
+      console.error("Error fetching db status:", err);
+    } finally {
+      setIsRefreshingDb(false);
+    }
+  };
+
   useEffect(() => {
     if (showSettings) {
-      const fetchDbStatus = async () => {
-        try {
-          const res = await fetch("/api/debug-db");
-          const data = await res.json();
-          setDbStatus(data);
-        } catch (err) {
-          console.error("Error fetching db status:", err);
-        }
-      };
       fetchDbStatus();
     }
   }, [showSettings]);
@@ -1733,7 +1743,16 @@ export default function App() {
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
-                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Estado de la Base de Datos</label>
+                <div className="flex justify-between items-center mb-3">
+                  <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Estado de la Base de Datos</label>
+                  <button 
+                    onClick={fetchDbStatus}
+                    disabled={isRefreshingDb}
+                    className="text-[8px] font-bold uppercase tracking-widest text-violet-600 hover:underline disabled:opacity-30"
+                  >
+                    {isRefreshingDb ? "Comprobando..." : "Reintentar"}
+                  </button>
+                </div>
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Conexión</span>
@@ -1758,8 +1777,32 @@ export default function App() {
                         <span className="text-[8px] uppercase tracking-widest opacity-40">Registros</span>
                         <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.companies_count} Empresas</span>
                       </div>
+                      
+                      {envStatus && (
+                        <div className="pt-2 space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[7px] uppercase tracking-widest opacity-40">URL Var</span>
+                            <span className={cn(
+                              "text-[7px] font-bold px-1 rounded-sm",
+                              envStatus.TURSO_DATABASE_URL === 'Configured' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                            )}>
+                              {envStatus.TURSO_DATABASE_URL}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[7px] uppercase tracking-widest opacity-40">Token Var</span>
+                            <span className={cn(
+                              "text-[7px] font-bold px-1 rounded-sm",
+                              envStatus.TURSO_AUTH_TOKEN === 'Configured' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                            )}>
+                              {envStatus.TURSO_AUTH_TOKEN}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {dbStatus.init_error && (
-                        <div className="p-2 bg-red-50 rounded-sm">
+                        <div className="p-2 bg-red-50 rounded-sm mt-2">
                           <p className="text-[8px] text-red-600 font-bold uppercase leading-tight">Error: {dbStatus.init_error}</p>
                         </div>
                       )}
@@ -1773,7 +1816,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.17</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.18</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1794,7 +1837,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.17 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
+                  DocLedger V6.18 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
                 </p>
               </div>
             </div>
