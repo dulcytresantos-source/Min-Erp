@@ -13,9 +13,22 @@ const PORT = 3000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Turso Database Client
-const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
+const getDbUrl = () => {
+  const url = process.env.TURSO_DATABASE_URL;
+  if (!url) {
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+      console.error("CRITICAL ERROR: TURSO_DATABASE_URL is not defined in production/Vercel!");
+      // We return a dummy string to avoid immediate crash, but it will fail on first query
+      return "libsql://missing-url-error";
+    }
+    return "file:local.db";
+  }
+  return url;
+};
+
+const dbUrl = getDbUrl();
 const maskedDbUrl = dbUrl.startsWith("libsql://") 
-  ? dbUrl.substring(0, 15) + "..." + dbUrl.substring(dbUrl.length - 10)
+  ? dbUrl.substring(0, 15) + "..." + (dbUrl.length > 10 ? dbUrl.substring(dbUrl.length - 10) : "")
   : dbUrl;
 console.log(`Database URL: ${maskedDbUrl}`);
 
@@ -24,8 +37,8 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-if (process.env.NODE_ENV === "production" && dbUrl === "file:local.db") {
-  console.warn("WARNING: Running in production with local file database. Data will be ephemeral.");
+if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && dbUrl.startsWith("file:")) {
+  console.error("FATAL: Running in production with local file database. This is NOT ALLOWED in V6.19+");
 }
 
 app.use(express.json({ limit: '10mb' }));
