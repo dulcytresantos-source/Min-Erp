@@ -1837,7 +1837,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.22</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.23</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1858,7 +1858,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.22 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
+                  DocLedger V6.23 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
                 </p>
               </div>
             </div>

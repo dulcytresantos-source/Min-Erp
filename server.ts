@@ -1,5 +1,6 @@
+console.log("Server starting (V6.23)...");
+
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { createClient } from "@libsql/client";
 import dotenv from "dotenv";
@@ -10,36 +11,66 @@ dotenv.config();
 export const app = express();
 const PORT = 3000;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Lazy AI Client
+let aiClient: any = null;
+const getAI = () => {
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "missing-key" });
+  }
+  return aiClient;
+};
 
 // Turso Database Client
-const getDbUrl = () => {
+let dbClient: any = null;
+const getDb = () => {
+  if (dbClient) return dbClient;
+
   const url = process.env.TURSO_DATABASE_URL;
   if (!url) {
     if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
-      console.error("CRITICAL ERROR: TURSO_DATABASE_URL is not defined in production/Vercel!");
-      // We return a dummy string to avoid immediate crash, but it will fail on first query
-      return "libsql://missing-url-error";
+      console.error("CRITICAL: TURSO_DATABASE_URL is missing in production!");
+      dbClient = {
+        execute: async (args: any) => { throw new Error("TURSO_DATABASE_URL is not configured. Please check your environment variables."); },
+        batch: async (args: any) => { throw new Error("TURSO_DATABASE_URL is not configured."); }
+      };
+      return dbClient;
     }
-    return "file:local.db";
+    dbClient = createClient({ url: "file:local.db" });
+    return dbClient;
+  }
+
+  try {
+    dbClient = createClient({
+      url: url,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+    return dbClient;
+  } catch (e) {
+    console.error("Failed to create database client:", e);
+    dbClient = {
+      execute: async (args: any) => { throw new Error(`Failed to initialize DB client: ${(e as Error).message}`); },
+      batch: async (args: any) => { throw new Error("Failed to initialize DB client."); }
+    };
+    return dbClient;
+  }
+};
+
+// Turso Database Client Proxy
+const db = {
+  execute: (args: any) => getDb().execute(args),
+  batch: (args: any, mode?: any) => getDb().batch(args, mode),
+};
+
+// Mask the URL for logging
+const getMaskedUrl = () => {
+  const url = process.env.TURSO_DATABASE_URL || (process.env.NODE_ENV === "production" ? "MISSING" : "file:local.db");
+  if (url.startsWith("libsql://")) {
+    return url.substring(0, 15) + "..." + (url.length > 10 ? url.substring(url.length - 10) : "");
   }
   return url;
 };
 
-const dbUrl = getDbUrl();
-const maskedDbUrl = dbUrl.startsWith("libsql://") 
-  ? dbUrl.substring(0, 15) + "..." + (dbUrl.length > 10 ? dbUrl.substring(dbUrl.length - 10) : "")
-  : dbUrl;
-console.log(`Database URL: ${maskedDbUrl}`);
-
-const db = createClient({
-  url: dbUrl,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && dbUrl.startsWith("file:")) {
-  console.error("FATAL: Running in production with local file database. This is NOT ALLOWED in V6.19+");
-}
+console.log(`Database URL Status: ${getMaskedUrl()}`);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -65,15 +96,18 @@ app.get("/api/debug-db", async (req, res) => {
     // Attempt a simple query to check connection
     let count = 0;
     try {
+      const db = getDb();
       const result = await db.execute("SELECT COUNT(*) as count FROM companies");
       count = result.rows[0].count as number;
     } catch (e) {
       return res.status(500).json({
         status: "error",
-        message: `Database Query Failed: ${(e as Error).message}`,
+        message: `Database Connection/Query Failed: ${(e as Error).message}`,
         database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
         db_initialized: dbInitialized,
-        init_error: dbInitError
+        init_error: dbInitError,
+        url_configured: !!process.env.TURSO_DATABASE_URL,
+        token_configured: !!process.env.TURSO_AUTH_TOKEN
       });
     }
     
@@ -110,8 +144,9 @@ let dbInitError: string | null = null;
 
 // Initialize Database
 async function initDb() {
+  const db = getDb();
   try {
-    console.log(`Initializing database (${dbUrl})...`);
+    console.log(`Initializing database (${getMaskedUrl()})...`);
     dbInitError = null;
     
     // We no longer drop tables automatically for "real" database use.
@@ -1017,6 +1052,7 @@ app.get("/api/test", async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
