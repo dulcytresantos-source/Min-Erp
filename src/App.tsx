@@ -1782,14 +1782,22 @@ export default function App() {
                   
                   {dbStatus && (
                     <div className="pt-3 border-t border-[#0A0A0A]/5 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[8px] uppercase tracking-widest opacity-40">Tipo</span>
-                        <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.database}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[8px] uppercase tracking-widest opacity-40">Registros</span>
-                        <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.companies_count} Empresas</span>
-                      </div>
+                      {dbStatus.status === "error" ? (
+                        <div className="p-2 bg-red-50 rounded-sm">
+                          <p className="text-[8px] text-red-600 font-bold uppercase leading-tight">Error de API: {dbStatus.message}</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[8px] uppercase tracking-widest opacity-40">Tipo</span>
+                            <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.database}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[8px] uppercase tracking-widest opacity-40">Registros</span>
+                            <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.companies_count} Empresas</span>
+                          </div>
+                        </>
+                      )}
                       
                       {envStatus && (
                         <div className="pt-2 space-y-1">
@@ -1829,7 +1837,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.21</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.22</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1850,7 +1858,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.21 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
+                  DocLedger V6.22 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
                 </p>
               </div>
             </div>

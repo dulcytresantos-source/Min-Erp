@@ -44,6 +44,65 @@ if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && dbUrl.start
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// DEBUG ROUTES (Must be before DB initialization middleware to allow diagnosis)
+app.get("/api/debug-env", (req, res) => {
+  const mask = (val: string | undefined) => val ? `${val.substring(0, 4)}...${val.substring(val.length - 4)}` : "MISSING";
+  res.json({
+    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
+    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
+    GEMINI_API_KEY: mask(process.env.GEMINI_API_KEY),
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL: process.env.VERCEL,
+    VERCEL_ENV: process.env.VERCEL_ENV
+  });
+});
+
+app.get("/api/debug-db", async (req, res) => {
+  try {
+    const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
+    const isLocal = dbUrl === "file:local.db";
+    
+    // Attempt a simple query to check connection
+    let count = 0;
+    try {
+      const result = await db.execute("SELECT COUNT(*) as count FROM companies");
+      count = result.rows[0].count as number;
+    } catch (e) {
+      return res.status(500).json({
+        status: "error",
+        message: `Database Query Failed: ${(e as Error).message}`,
+        database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
+        db_initialized: dbInitialized,
+        init_error: dbInitError
+      });
+    }
+    
+    // Mask the URL for security
+    const maskedUrl = dbUrl.startsWith("libsql://") 
+      ? dbUrl.substring(0, 15) + "..." + (dbUrl.length > 10 ? dbUrl.substring(dbUrl.length - 10) : "")
+      : dbUrl;
+
+    res.json({
+      status: "ok",
+      database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
+      url: maskedUrl,
+      url_configured: !!process.env.TURSO_DATABASE_URL,
+      token_configured: !!process.env.TURSO_AUTH_TOKEN,
+      db_initialized: dbInitialized,
+      init_error: dbInitError,
+      companies_count: count,
+      message: isLocal ? "WARNING: Using local database. Data will be lost on restart." : "Connected to remote database."
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: (error as Error).message,
+      db_initialized: dbInitialized,
+      init_error: dbInitError
+    });
+  }
+});
+
 // Database initialization state
 let dbInitialized = false;
 let dbInitPromise: Promise<void> | null = null;
@@ -317,7 +376,12 @@ async function initDb() {
 }
 
 // Middleware to ensure database is initialized before handling requests
+// (Skip for debug routes)
 app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api/debug')) {
+    return next();
+  }
+  
   if (!dbInitialized) {
     if (!dbInitPromise) {
       dbInitPromise = initDb();
@@ -325,53 +389,6 @@ app.use(async (req, res, next) => {
     await dbInitPromise;
   }
   next();
-});
-
-app.get("/api/debug-env", (req, res) => {
-  const mask = (val: string | undefined) => val ? `${val.substring(0, 4)}...${val.substring(val.length - 4)}` : "MISSING";
-  res.json({
-    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
-    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
-    GEMINI_API_KEY: mask(process.env.GEMINI_API_KEY),
-    NODE_ENV: process.env.NODE_ENV,
-    VERCEL: process.env.VERCEL,
-    VERCEL_ENV: process.env.VERCEL_ENV
-  });
-});
-
-app.get("/api/debug-db", async (req, res) => {
-  try {
-    const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
-    const isLocal = dbUrl === "file:local.db";
-    const result = await db.execute("SELECT COUNT(*) as count FROM companies");
-    const count = result.rows[0].count;
-    
-    // Mask the URL for security
-    const maskedUrl = dbUrl.startsWith("libsql://") 
-      ? dbUrl.substring(0, 15) + "..." + dbUrl.substring(dbUrl.length - 10)
-      : dbUrl;
-
-    res.json({
-      status: "ok",
-      database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
-      url: maskedUrl,
-      url_configured: !!process.env.TURSO_DATABASE_URL,
-      token_configured: !!process.env.TURSO_AUTH_TOKEN,
-      db_initialized: dbInitialized,
-      init_error: dbInitError,
-      companies_count: count,
-      message: isLocal ? "WARNING: Using local database. Data will be lost on restart." : "Connected to remote database."
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: (error as Error).message,
-      db_initialized: dbInitialized,
-      init_error: dbInitError,
-      url_configured: !!process.env.TURSO_DATABASE_URL,
-      token_configured: !!process.env.TURSO_AUTH_TOKEN
-    });
-  }
 });
 
 // API Routes
