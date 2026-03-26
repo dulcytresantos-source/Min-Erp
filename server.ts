@@ -13,17 +13,27 @@ const PORT = 3000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Turso Database Client
+const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || "file:local.db",
+  url: dbUrl,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
+
+if (process.env.NODE_ENV === "production" && dbUrl === "file:local.db") {
+  console.warn("WARNING: Running in production with local file database. Data will be ephemeral.");
+}
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Database initialization state
+let dbInitialized = false;
+let dbInitPromise: Promise<void> | null = null;
+
 // Initialize Database
 async function initDb() {
   try {
+    console.log(`Initializing database (${dbUrl})...`);
     // We no longer drop tables automatically for "real" database use.
     // await db.execute("DROP TABLE IF EXISTS payments");
     // await db.execute("DROP TABLE IF EXISTS invoices");
@@ -175,42 +185,44 @@ async function initDb() {
     }
 
     const defaultCompanyResult = await db.execute("SELECT id FROM companies WHERE is_default = 1 LIMIT 1");
-    const defaultCompanyId = Number(defaultCompanyResult.rows[0].id);
+    const defaultCompanyId = defaultCompanyResult.rows.length > 0 ? Number(defaultCompanyResult.rows[0].id) : null;
 
-    // Update existing records with default company if they have NULL company_id
-    await db.execute({
-      sql: "UPDATE suppliers SET company_id = ? WHERE company_id IS NULL",
-      args: [defaultCompanyId],
-    });
-    await db.execute({
-      sql: "UPDATE invoices SET company_id = ? WHERE company_id IS NULL",
-      args: [defaultCompanyId],
-    });
+    if (defaultCompanyId) {
+      // Update existing records with default company if they have NULL company_id
+      await db.execute({
+        sql: "UPDATE suppliers SET company_id = ? WHERE company_id IS NULL",
+        args: [defaultCompanyId],
+      });
+      await db.execute({
+        sql: "UPDATE invoices SET company_id = ? WHERE company_id IS NULL",
+        args: [defaultCompanyId],
+      });
 
-    // Migration: Update supplier IDs to include company_id prefix for independent numbering
-    try {
-      const suppliersToMigrate = await db.execute("SELECT id, company_id FROM suppliers WHERE id NOT LIKE '%-%'");
-      for (const s of suppliersToMigrate.rows) {
-        const newId = `${s.company_id}-${s.id}`;
-        // Update invoices first (FK)
-        await db.execute({
-          sql: "UPDATE invoices SET supplier_id = ? WHERE supplier_id = ?",
-          args: [newId, s.id]
-        });
-        // Update supplier
-        await db.execute({
-          sql: "UPDATE suppliers SET id = ? WHERE id = ?",
-          args: [newId, s.id]
-        });
+      // Migration: Update supplier IDs to include company_id prefix for independent numbering
+      try {
+        const suppliersToMigrate = await db.execute("SELECT id, company_id FROM suppliers WHERE id NOT LIKE '%-%'");
+        for (const s of suppliersToMigrate.rows) {
+          const newId = `${s.company_id}-${s.id}`;
+          // Update invoices first (FK)
+          await db.execute({
+            sql: "UPDATE invoices SET supplier_id = ? WHERE supplier_id = ?",
+            args: [newId, s.id]
+          });
+          // Update supplier
+          await db.execute({
+            sql: "UPDATE suppliers SET id = ? WHERE id = ?",
+            args: [newId, s.id]
+          });
+        }
+      } catch (e) {
+        console.error("Migration of supplier IDs failed:", e);
       }
-    } catch (e) {
-      console.error("Migration of supplier IDs failed:", e);
     }
 
     const countResult = await db.execute("SELECT COUNT(*) as count FROM suppliers");
     const count = Number(countResult.rows[0].count);
 
-    if (count === 0) {
+    if (count === 0 && defaultCompanyId) {
       const seedSuppliers = [
         { id: 'PRov001', name: 'Coca-Cola European Partners', cif: 'A86561712', email: 'billing@cocacola.com', address: 'Calle de la Ribera del Loira, 20', city: 'Madrid', province: 'Madrid', zip_code: '28042', country_code: 'ES', alias: 'COCACOLA', phone: '913345000' },
         { id: 'PRov002', name: 'IBM España S.A.', cif: 'A28010644', email: 'invoices@es.ibm.com', address: 'Calle de Santa Hortensia, 26', city: 'Madrid', province: 'Madrid', zip_code: '28002', country_code: 'ES', alias: 'IBM', phone: '913976000' },
@@ -271,12 +283,48 @@ async function initDb() {
     }
 
     console.log("Database initialized");
+    dbInitialized = true;
   } catch (err) {
     console.error("Database initialization failed:", err);
+    // Even if it fails, we mark it as "initialized" to avoid infinite waiting, 
+    // but the app might fail on subsequent queries.
+    dbInitialized = true;
   }
 }
 
-initDb();
+// Middleware to ensure database is initialized before handling requests
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    if (!dbInitPromise) {
+      dbInitPromise = initDb();
+    }
+    await dbInitPromise;
+  }
+  next();
+});
+
+app.get("/api/debug-db", async (req, res) => {
+  try {
+    const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
+    const isLocal = dbUrl === "file:local.db";
+    const result = await db.execute("SELECT COUNT(*) as count FROM companies");
+    const count = result.rows[0].count;
+    
+    res.json({
+      status: "ok",
+      database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
+      url_configured: !!process.env.TURSO_DATABASE_URL,
+      token_configured: !!process.env.TURSO_AUTH_TOKEN,
+      companies_count: count,
+      message: isLocal ? "WARNING: Using local database. Data will be lost on restart." : "Connected to remote database."
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: (error as Error).message
+    });
+  }
+});
 
 // API Routes
 app.get("/api/companies", async (req, res) => {
