@@ -15,3 +15,8 @@ DocLedger V6.15 - Registro de Cambios:
 - Tipado dinámico para IDs de proveedores (string/number).
 - [CORRECCIÓN VERCEL] Implementación de rutas dinámicas en /api/ para compatibilidad con despliegues en Vercel (solución al error 404 en min-erp).
 - Sincronización de endpoints de pagos y empresas en entorno serverless.
+- Mejora de robustez en todas las rutas API:
+    * Manejo seguro de parámetros de consulta (IDs) como números.
+    * Validación de parámetros obligatorios y tipos de datos.
+    * Mejora de logs de error para depuración en producción.
+    * Configuración de vercel.json para optimizar el despliegue y las redirecciones.

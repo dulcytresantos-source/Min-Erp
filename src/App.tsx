@@ -1757,7 +1757,7 @@ export default function App() {
             >
               <div className="flex justify-between items-end mb-8">
                 <div>
-                  <h2 className="text-4xl font-bold tracking-tighter">Maestro de Proveedores</h2>
+                  <h2 className="text-4xl font-bold tracking-tighter text-red-600">Maestro de Proveedores</h2>
                   <p className="text-xs font-bold uppercase tracking-widest opacity-40">Gestión de Cuentas a Pagar / Ledger de Entidades</p>
                 </div>
                 <div className="flex items-center gap-2">

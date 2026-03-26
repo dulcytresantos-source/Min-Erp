@@ -885,6 +885,23 @@ app.delete("/api/invoices/:id", async (req, res) => {
   }
 });
 
+app.get("/api/test", async (req, res) => {
+  try {
+    const result = await db.execute("SELECT 1 as connected");
+    res.json({ 
+      status: "ok", 
+      message: "Conexión con Turso exitosa",
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: "error", 
+      message: "Error al conectar con la base de datos",
+      error: (error as Error).message 
+    });
+  }
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
