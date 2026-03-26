@@ -400,6 +400,13 @@ export default function App() {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState<Supplier | null>(null);
+  const [dbStatus, setDbStatus] = useState<{
+    database: string;
+    url: string;
+    db_initialized: boolean;
+    companies_count: number;
+    init_error: string | null;
+  } | null>(null);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -692,6 +699,21 @@ export default function App() {
       }
     }
   }, [activeCompanyId, fetchData, view, movementsFilterSupplierId]);
+
+  useEffect(() => {
+    if (showSettings) {
+      const fetchDbStatus = async () => {
+        try {
+          const res = await fetch("/api/debug-db");
+          const data = await res.json();
+          setDbStatus(data);
+        } catch (err) {
+          console.error("Error fetching db status:", err);
+        }
+      };
+      fetchDbStatus();
+    }
+  }, [showSettings]);
 
   useEffect(() => {
     if (view !== 'supplier-detail') {
@@ -1707,6 +1729,42 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-[#0A0A0A]/10">
+                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Estado de la Base de Datos</label>
+                <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase tracking-widest opacity-60">Conexión</span>
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        dbStatus?.db_initialized ? "bg-green-500 animate-pulse" : "bg-red-500"
+                      )} />
+                      <span className="text-[10px] font-bold uppercase tracking-tight">
+                        {dbStatus?.db_initialized ? "Conectado" : "Desconectado"}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {dbStatus && (
+                    <div className="pt-3 border-t border-[#0A0A0A]/5 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[8px] uppercase tracking-widest opacity-40">Tipo</span>
+                        <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.database}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[8px] uppercase tracking-widest opacity-40">Registros</span>
+                        <span className="text-[9px] font-bold uppercase tracking-tight">{dbStatus.companies_count} Empresas</span>
+                      </div>
+                      {dbStatus.init_error && (
+                        <div className="p-2 bg-red-50 rounded-sm">
+                          <p className="text-[8px] text-red-600 font-bold uppercase leading-tight">Error: {dbStatus.init_error}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
