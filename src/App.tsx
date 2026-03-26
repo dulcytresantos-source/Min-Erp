@@ -706,14 +706,27 @@ export default function App() {
     setIsRefreshingDb(true);
     try {
       const res = await fetch("/api/debug-db");
-      const data = await res.json();
+      let data;
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { status: "error", message: `HTTP ${res.status}: ${text.substring(0, 100)}` };
+        }
+      }
       setDbStatus(data);
       
       const envRes = await fetch("/api/debug-env");
-      const envData = await envRes.json();
-      setEnvStatus(envData);
+      if (envRes.ok) {
+        const envData = await envRes.json();
+        setEnvStatus(envData);
+      }
     } catch (err) {
       console.error("Error fetching db status:", err);
+      setDbStatus({ status: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsRefreshingDb(false);
     }
@@ -1784,18 +1797,18 @@ export default function App() {
                             <span className="text-[7px] uppercase tracking-widest opacity-40">URL Var</span>
                             <span className={cn(
                               "text-[7px] font-bold px-1 rounded-sm",
-                              envStatus.TURSO_DATABASE_URL === 'Configured' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                              envStatus.TURSO_DATABASE_URL !== 'MISSING' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                             )}>
-                              {envStatus.TURSO_DATABASE_URL}
+                              {envStatus.TURSO_DATABASE_URL !== 'MISSING' ? "Configured" : "Missing"}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-[7px] uppercase tracking-widest opacity-40">Token Var</span>
                             <span className={cn(
                               "text-[7px] font-bold px-1 rounded-sm",
-                              envStatus.TURSO_AUTH_TOKEN === 'Configured' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                              envStatus.TURSO_AUTH_TOKEN !== 'MISSING' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                             )}>
-                              {envStatus.TURSO_AUTH_TOKEN}
+                              {envStatus.TURSO_AUTH_TOKEN !== 'MISSING' ? "Configured" : "Missing"}
                             </span>
                           </div>
                         </div>
@@ -1816,7 +1829,7 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.20</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.21</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
@@ -1837,7 +1850,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.20 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
+                  DocLedger V6.21 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
                 </p>
               </div>
             </div>
