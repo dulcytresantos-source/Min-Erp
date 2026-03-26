@@ -14,6 +14,11 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Turso Database Client
 const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
+const maskedDbUrl = dbUrl.startsWith("libsql://") 
+  ? dbUrl.substring(0, 15) + "..." + dbUrl.substring(dbUrl.length - 10)
+  : dbUrl;
+console.log(`Database URL: ${maskedDbUrl}`);
+
 const db = createClient({
   url: dbUrl,
   authToken: process.env.TURSO_AUTH_TOKEN,
@@ -29,11 +34,14 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Database initialization state
 let dbInitialized = false;
 let dbInitPromise: Promise<void> | null = null;
+let dbInitError: string | null = null;
 
 // Initialize Database
 async function initDb() {
   try {
     console.log(`Initializing database (${dbUrl})...`);
+    dbInitError = null;
+    
     // We no longer drop tables automatically for "real" database use.
     // await db.execute("DROP TABLE IF EXISTS payments");
     // await db.execute("DROP TABLE IF EXISTS invoices");
@@ -176,8 +184,10 @@ async function initDb() {
     // Seed Data - Only if database is empty
     const companyCountResult = await db.execute("SELECT COUNT(*) as count FROM companies");
     const companyCount = Number(companyCountResult.rows[0].count);
+    console.log(`Company count during init: ${companyCount}`);
 
     if (companyCount === 0) {
+      console.log("Seeding default company...");
       await db.execute({
         sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
         args: ["MI EMPRESA S.L.", "CALLE MAYOR 1, MADRID", "B12345678", 1]
@@ -285,6 +295,7 @@ async function initDb() {
     console.log("Database initialized");
     dbInitialized = true;
   } catch (err) {
+    dbInitError = (err as Error).message;
     console.error("Database initialization failed:", err);
     // Even if it fails, we mark it as "initialized" to avoid infinite waiting, 
     // but the app might fail on subsequent queries.
@@ -303,6 +314,18 @@ app.use(async (req, res, next) => {
   next();
 });
 
+app.get("/api/debug-env", (req, res) => {
+  const mask = (val: string | undefined) => val ? `${val.substring(0, 4)}...${val.substring(val.length - 4)}` : "MISSING";
+  res.json({
+    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
+    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
+    GEMINI_API_KEY: mask(process.env.GEMINI_API_KEY),
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL: process.env.VERCEL,
+    VERCEL_ENV: process.env.VERCEL_ENV
+  });
+});
+
 app.get("/api/debug-db", async (req, res) => {
   try {
     const dbUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
@@ -310,18 +333,30 @@ app.get("/api/debug-db", async (req, res) => {
     const result = await db.execute("SELECT COUNT(*) as count FROM companies");
     const count = result.rows[0].count;
     
+    // Mask the URL for security
+    const maskedUrl = dbUrl.startsWith("libsql://") 
+      ? dbUrl.substring(0, 15) + "..." + dbUrl.substring(dbUrl.length - 10)
+      : dbUrl;
+
     res.json({
       status: "ok",
       database: isLocal ? "LOCAL (EPHEMERAL)" : "REMOTE (TURSO)",
+      url: maskedUrl,
       url_configured: !!process.env.TURSO_DATABASE_URL,
       token_configured: !!process.env.TURSO_AUTH_TOKEN,
+      db_initialized: dbInitialized,
+      init_error: dbInitError,
       companies_count: count,
       message: isLocal ? "WARNING: Using local database. Data will be lost on restart." : "Connected to remote database."
     });
   } catch (error) {
     res.status(500).json({
       status: "error",
-      message: (error as Error).message
+      message: (error as Error).message,
+      db_initialized: dbInitialized,
+      init_error: dbInitError,
+      url_configured: !!process.env.TURSO_DATABASE_URL,
+      token_configured: !!process.env.TURSO_AUTH_TOKEN
     });
   }
 });
