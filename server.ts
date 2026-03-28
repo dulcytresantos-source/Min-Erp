@@ -1,3 +1,4 @@
+console.log("[BOOT] server.ts loaded");
 console.log("Server starting (V6.28 - Vercel Optimized Initialization)...");
 if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
@@ -35,28 +36,31 @@ let dbClient: any = null;
 const getDb = () => {
   if (dbClient) return dbClient;
 
+  console.log("[INIT] getDb: creating new client");
   const url = process.env.TURSO_DATABASE_URL;
   if (!url) {
     if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
-      console.error("CRITICAL: TURSO_DATABASE_URL is missing in production!");
+      console.error("[ERROR] CRITICAL: TURSO_DATABASE_URL is missing in production!");
       dbClient = {
         execute: async (args: any) => { throw new Error("TURSO_DATABASE_URL is not configured. Please check your environment variables."); },
         batch: async (args: any) => { throw new Error("TURSO_DATABASE_URL is not configured."); }
       };
       return dbClient;
     }
+    console.log("[INIT] getDb: using local file db");
     dbClient = createClient({ url: "file:local.db" });
     return dbClient;
   }
 
   try {
+    console.log(`[INIT] getDb: connecting to ${getMaskedUrl()}`);
     dbClient = createClient({
       url: url,
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
     return dbClient;
   } catch (e) {
-    console.error("Failed to create database client:", e);
+    console.error("[ERROR] Failed to create database client:", e);
     dbClient = {
       execute: async (args: any) => { throw new Error(`Failed to initialize DB client: ${(e as Error).message}`); },
       batch: async (args: any) => { throw new Error("Failed to initialize DB client."); }
@@ -81,6 +85,21 @@ const getMaskedUrl = () => {
 };
 
 console.log(`Database URL Status: ${getMaskedUrl()}`);
+
+// Database initialization state
+let dbInitialized = false;
+let dbInitPromise: Promise<void> | null = null;
+let dbInitError: string | null = null;
+
+console.log("[BOOT] before middleware registration");
+app.use((req, res, next) => {
+  if (process.env.VERCEL) {
+    console.log(`[MIDDLEWARE] enter req.path=${req.path}`);
+    console.log(`[MIDDLEWARE] dbInitialized=${dbInitialized}`);
+    console.log(`[MIDDLEWARE] hasDbInitPromise=${!!dbInitPromise}`);
+  }
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -193,18 +212,15 @@ app.get("/api/debug-db", async (req, res) => {
   }
 });
 
-// Database initialization state
-let dbInitialized = false;
-let dbInitPromise: Promise<void> | null = null;
-let dbInitError: string | null = null;
-
 // Initialize Database (Optimized with Batch for Vercel)
 async function initDb() {
+  console.log("[INIT] start");
   const db = getDb();
   try {
     console.log(`Initializing database schema (${getMaskedUrl()})...`);
     dbInitError = null;
     
+    console.log("[INIT] create tables & indexes batch");
     // Group all schema operations into a single batch to avoid multiple network roundtrips
     await db.batch([
       // 1. Tables
@@ -267,9 +283,11 @@ async function initDb() {
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)`
     ], "write");
 
+    console.log("[INIT] check default company");
     // Check if we need a default company (Single query)
     const companyCountResult = await db.execute("SELECT COUNT(*) as count FROM companies");
     if (Number(companyCountResult.rows[0].count) === 0) {
+      console.log("[INIT] insert default company");
       await db.execute({
         sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
         args: ["MI EMPRESA S.L.", "CALLE MAYOR 1, MADRID", "B12345678", 1]
@@ -277,9 +295,11 @@ async function initDb() {
     }
 
     console.log("Database schema initialized successfully");
+    console.log("[INIT] end");
     dbInitialized = true;
   } catch (err) {
     dbInitError = (err as Error).message;
+    console.error("[INIT] catch error=", err);
     console.error("Database initialization failed:", err);
     dbInitialized = true;
   }
@@ -287,73 +307,81 @@ async function initDb() {
 
 // Seed Demo Data (Optimized with Batch)
 async function seedDemoData() {
+  console.log("[SEED] start");
   const db = getDb();
   
-  // 1. Ensure we have a company
-  let companyId: number;
-  const companyResult = await db.execute("SELECT id FROM companies WHERE name = 'EMPRESA DEMO S.L.' LIMIT 1");
-  
-  if (companyResult.rows.length === 0) {
-    const res = await db.execute({
-      sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
-      args: ["EMPRESA DEMO S.L.", "AVENIDA DE LAS DEMOS 123", "B99999999", 0]
-    });
-    companyId = Number(res.lastInsertRowid);
-  } else {
-    companyId = Number(companyResult.rows[0].id);
-  }
-
-  const seedSuppliers = [
-    { id: 'PRov001', name: 'Coca-Cola European Partners', cif: 'A86561712', email: 'billing@cocacola.com', address: 'Calle de la Ribera del Loira, 20', city: 'Madrid', province: 'Madrid', zip_code: '28042', country_code: 'ES', alias: 'COCACOLA', phone: '913345000' },
-    { id: 'PRov002', name: 'IBM España S.A.', cif: 'A28010644', email: 'invoices@es.ibm.com', address: 'Calle de Santa Hortensia, 26', city: 'Madrid', province: 'Madrid', zip_code: '28002', country_code: 'ES', alias: 'IBM', phone: '913976000' },
-    { id: 'PRov003', name: 'Telefónica S.A.', cif: 'A28015865', email: 'proveedores@telefonica.com', address: 'Gran Vía, 28', city: 'Madrid', province: 'Madrid', zip_code: '28013', country_code: 'ES', alias: 'TELEFONICA', phone: '915840306' },
-    { id: 'PRov004', name: 'Inditex S.A.', cif: 'A15075062', email: 'finance@inditex.com', address: 'Avenida de la Diputación', city: 'Arteixo', province: 'A Coruña', zip_code: '15143', country_code: 'ES', alias: 'INDITEX', phone: '981185400' },
-    { id: 'PRov005', name: 'Banco Santander S.A.', cif: 'A39000013', email: 'pagos@santander.com', address: 'Paseo de Pereda, 9-12', city: 'Santander', province: 'Cantabria', zip_code: '39004', country_code: 'ES', alias: 'SANTANDER', phone: '942206100' }
-  ];
-
-  const batchOps: any[] = [];
-
-  for (const s of seedSuppliers) {
-    const newId = `${companyId}-${s.id}`;
-    batchOps.push({
-      sql: "INSERT OR IGNORE INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      args: [newId, companyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
-    });
-  }
-
-  // Seed Invoices & Payments (Demo Movements 2026)
-  const suppliers = ['PRov001', 'PRov002', 'PRov003', 'PRov004', 'PRov005'];
-  const statuses = ['Paid', 'Partial', 'Pending'];
-  
-  for (const sId of suppliers) {
-    const fullSId = `${companyId}-${sId}`;
-    const count = sId === 'PRov001' ? 8 : 3; // Reduced count for faster seeding
-    const alias = seedSuppliers.find(s => s.id === sId)?.alias || 'SUP';
+  try {
+    // 1. Ensure we have a company
+    let companyId: number;
+    console.log("[SEED] check company");
+    const companyResult = await db.execute("SELECT id FROM companies WHERE name = 'EMPRESA DEMO S.L.' LIMIT 1");
     
-    for (let i = 1; i <= count; i++) {
-      const month = Math.floor((i - 1) / (count / 12)) + 1;
-      const day = (i * 3) % 28 + 1;
-      const dateStr = `2026-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      const dueDate = `2026-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      
-      const status = statuses[i % 3];
-      const base = 100 * i + (Math.random() * 50);
-      const total = base * 1.21;
-      const invNum = `DEMO-26-${alias}-${i.toString().padStart(3, '0')}`;
+    if (companyResult.rows.length === 0) {
+      console.log("[SEED] insert company");
+      const res = await db.execute({
+        sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
+        args: ["EMPRESA DEMO S.L.", "AVENIDA DE LAS DEMOS 123", "B99999999", 0]
+      });
+      companyId = Number(res.lastInsertRowid);
+    } else {
+      companyId = Number(companyResult.rows[0].id);
+    }
 
+    const seedSuppliers = [
+      { id: 'PRov001', name: 'Coca-Cola European Partners', cif: 'A86561712', email: 'billing@cocacola.com', address: 'Calle de la Ribera del Loira, 20', city: 'Madrid', province: 'Madrid', zip_code: '28042', country_code: 'ES', alias: 'COCACOLA', phone: '913345000' },
+      { id: 'PRov002', name: 'IBM España S.A.', cif: 'A28010644', email: 'invoices@es.ibm.com', address: 'Calle de Santa Hortensia, 26', city: 'Madrid', province: 'Madrid', zip_code: '28002', country_code: 'ES', alias: 'IBM', phone: '913976000' },
+      { id: 'PRov003', name: 'Telefónica S.A.', cif: 'A28015865', email: 'proveedores@telefonica.com', address: 'Gran Vía, 28', city: 'Madrid', province: 'Madrid', zip_code: '28013', country_code: 'ES', alias: 'TELEFONICA', phone: '915840306' },
+      { id: 'PRov004', name: 'Inditex S.A.', cif: 'A15075062', email: 'finance@inditex.com', address: 'Avenida de la Diputación', city: 'Arteixo', province: 'A Coruña', zip_code: '15143', country_code: 'ES', alias: 'INDITEX', phone: '981185400' },
+      { id: 'PRov005', name: 'Banco Santander S.A.', cif: 'A39000013', email: 'pagos@santander.com', address: 'Paseo de Pereda, 9-12', city: 'Santander', province: 'Cantabria', zip_code: '39004', country_code: 'ES', alias: 'SANTANDER', phone: '942206100' }
+    ];
+
+    const batchOps: any[] = [];
+
+    for (const s of seedSuppliers) {
+      const newId = `${companyId}-${s.id}`;
       batchOps.push({
-        sql: "INSERT OR IGNORE INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        args: [companyId, fullSId, invNum, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
+        sql: "INSERT OR IGNORE INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [newId, companyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
       });
     }
-  }
 
-  if (batchOps.length > 0) {
-    console.log(`Executing batch of ${batchOps.length} demo operations...`);
-    await db.batch(batchOps, "write");
-  }
+    // Seed Invoices & Payments (Demo Movements 2026)
+    const suppliers = ['PRov001', 'PRov002', 'PRov003', 'PRov004', 'PRov005'];
+    const statuses = ['Paid', 'Partial', 'Pending'];
+    
+    for (const sId of suppliers) {
+      const fullSId = `${companyId}-${sId}`;
+      const count = sId === 'PRov001' ? 8 : 3; // Reduced count for faster seeding
+      const alias = seedSuppliers.find(s => s.id === sId)?.alias || 'SUP';
+      
+      for (let i = 1; i <= count; i++) {
+        const month = Math.floor((i - 1) / (count / 12)) + 1;
+        const day = (i * 3) % 28 + 1;
+        const dateStr = `2026-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const dueDate = `2026-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        
+        const status = statuses[i % 3];
+        const base = 100 * i + (Math.random() * 50);
+        const total = base * 1.21;
+        const invNum = `DEMO-26-${alias}-${i.toString().padStart(3, '0')}`;
 
-  console.log("Demo data seeded successfully");
+        batchOps.push({
+          sql: "INSERT OR IGNORE INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          args: [companyId, fullSId, invNum, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
+        });
+      }
+    }
+
+    if (batchOps.length > 0) {
+      console.log(`[SEED] batch execute ${batchOps.length} ops`);
+      await db.batch(batchOps, "write");
+    }
+
+    console.log("Demo data seeded successfully");
+    console.log("[SEED] end");
+  } catch (err) {
+    console.error("[SEED] catch error=", err);
+  }
 }
 
 // Middleware to log requests (Minimal & Fast)
@@ -400,19 +428,25 @@ app.get("/api/admin/seed-demo", async (req, res) => {
 });
 
 app.get("/api/companies", async (req, res) => {
+  console.log("[COMPANIES] enter route");
   // PRUEBA BRUTA DE BYPASS: Usamos un cliente fresco directo (como en debug-raw)
   const url = process.env.TURSO_DATABASE_URL;
   const token = process.env.TURSO_AUTH_TOKEN;
 
   if (!url || !token) {
+    console.error("[COMPANIES] error=Missing TURSO credentials");
     return res.status(500).json({ error: "Missing TURSO credentials in bypass test" });
   }
 
   try {
+    console.log("[COMPANIES] before db.execute");
     const tempDb = createClient({ url, authToken: token });
     const result = await tempDb.execute("SELECT * FROM companies ORDER BY name ASC");
+    console.log(`[COMPANIES] after db.execute rows=${result.rows.length}`);
     res.json(result.rows);
   } catch (err) {
+    console.error("[COMPANIES] catch error=", err);
+    console.error("[ERROR] COMPANIES route failed:", err);
     res.status(500).json({ 
       error: (err as Error).message,
       phase: "bypass-test-error"
@@ -1060,11 +1094,26 @@ async function startServer() {
 
 // Solo escuchamos en el puerto si NO estamos en Vercel
 if (!process.env.VERCEL) {
-  startServer().then(() => {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+  console.log("[BOOT] starting server locally");
+  try {
+    startServer().then(() => {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }).catch(e => {
+      console.error("[ERROR] [BOOT] startServer failed", e);
     });
-  });
+  } catch (e) {
+    console.error("[ERROR] [BOOT] startServer synchronous failure", e);
+  }
 }
 
-export default app;
+console.log("[BOOT] exporting app");
+let exportedApp;
+try {
+  exportedApp = app;
+} catch (e) {
+  console.error("[ERROR] [BOOT] export default app failed", e);
+  throw e;
+}
+export default exportedApp;
