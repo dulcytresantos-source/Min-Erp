@@ -1,4 +1,4 @@
-console.log("Server starting (V6.27 - Optimized Initialization)...");
+console.log("Server starting (V6.28 - Vercel Optimized Initialization)...");
 if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
 import express from "express";
@@ -7,7 +7,9 @@ import { createClient } from "@libsql/client";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 
-dotenv.config();
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 // Helper to mask sensitive strings
 function maskString(str: string | undefined) {
@@ -85,16 +87,16 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // DEBUG ROUTES (Must be before DB initialization middleware to allow diagnosis)
 app.get("/api/debug/ping", (req, res) => {
-  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.27" });
+  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.28" });
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV, version: "V6.27" });
+  res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV, version: "V6.28" });
 });
 
 app.get("/api/debug/config", (req, res) => {
   res.json({
-    version: "V6.27",
+    version: "V6.28",
     node_version: process.version,
     env: {
       TURSO_URL: maskString(process.env.TURSO_DATABASE_URL),
@@ -1021,28 +1023,36 @@ app.get("/api/test", async (req, res) => {
 });
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+  // Solo configuramos Vite si NO estamos en Vercel y NO estamos en producción
+  if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Vite middleware failed to load:", e);
+    }
+  } else if (!process.env.VERCEL) {
+    // Si estamos en producción local (no Vercel), servimos estáticos
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // En Vercel, no servimos estáticos ni Vite desde aquí, Vercel lo hace vía vercel.json
 }
 
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  startServer();
+// Solo escuchamos en el puerto si NO estamos en Vercel
+if (!process.env.VERCEL) {
+  startServer().then(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
 }
 
 export default app;
