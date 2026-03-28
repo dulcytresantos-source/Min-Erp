@@ -6,6 +6,10 @@
       "destination": "/api/debug/ping.ts"
     },
     {
+      "source": "/api/debug/env",
+      "destination": "/api/debug/env.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },
