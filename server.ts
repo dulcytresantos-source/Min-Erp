@@ -1,4 +1,4 @@
-console.log("Server starting (V6.24)...");
+console.log("Server starting (V6.25 - Diagnostic Mode)...");
 if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
 import express from "express";
@@ -77,6 +77,37 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // DEBUG ROUTES (Must be before DB initialization middleware to allow diagnosis)
+app.get("/api/debug/ping", (req, res) => {
+  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.25" });
+});
+
+app.get("/api/debug/env-check", (req, res) => {
+  const mask = (val: string | undefined) => val ? `${val.substring(0, 8)}...${val.substring(val.length - 4)}` : "MISSING";
+  res.json({
+    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
+    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL: process.env.VERCEL
+  });
+});
+
+app.get("/api/debug/raw-conn", async (req, res) => {
+  try {
+    const db = getDb();
+    const start = Date.now();
+    const result = await db.execute("SELECT 1 as connected");
+    const end = Date.now();
+    res.json({ 
+      status: "ok", 
+      message: "Raw Connection OK", 
+      latency: `${end - start}ms`,
+      data: result.rows[0] 
+    });
+  } catch (err) {
+    res.status(500).json({ status: "error", message: (err as Error).message });
+  }
+});
+
 app.get("/api/debug-env", (req, res) => {
   const mask = (val: string | undefined) => val ? `${val.substring(0, 4)}...${val.substring(val.length - 4)}` : "MISSING";
   res.json({
