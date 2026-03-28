@@ -442,37 +442,32 @@ async function initDb() {
   }
 }
 
-// Middleware to ensure database is initialized before handling requests
-// (Skip for debug routes)
-app.use(async (req, res, next) => {
-  // Log request for debugging in Vercel
+// Middleware to log requests (Minimal & Fast)
+app.use((req, res, next) => {
   if (process.env.VERCEL) {
     console.log(`[${req.method}] ${req.path}`);
   }
+  next();
+});
 
-  if (req.path.startsWith('/api/debug')) {
-    return next();
-  }
-  
+// API Routes
+app.get("/api/admin/setup-db", async (req, res) => {
   try {
-    if (!dbInitialized) {
-      if (!dbInitPromise) {
-        console.log("Triggering lazy DB initialization...");
-        dbInitPromise = initDb();
-      }
-      await dbInitPromise;
-    }
-    next();
+    console.log("Manual Setup Triggered...");
+    await initDb();
+    res.json({ 
+      status: "ok", 
+      message: "Database schema and demo data initialized successfully.",
+      timestamp: new Date().toISOString()
+    });
   } catch (err) {
-    console.error("Middleware DB Init Error:", err);
     res.status(500).json({ 
-      error: "Database initialization failed", 
-      details: (err as Error).message 
+      status: "error", 
+      message: (err as Error).message 
     });
   }
 });
 
-// API Routes
 app.get("/api/companies", async (req, res) => {
   try {
     const result = await db.execute("SELECT * FROM companies ORDER BY name ASC");

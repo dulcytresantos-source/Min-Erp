@@ -1837,10 +1837,27 @@ export default function App() {
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.25</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.26</span>
                   </div>
                   
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
+                    <button 
+                      onClick={async () => {
+                        if (confirm("¿Deseas inicializar la base de datos? Esto creará las tablas y datos de demo si no existen.")) {
+                          try {
+                            const res = await fetch('/api/admin/setup-db');
+                            const data = await res.json();
+                            alert(data.message || "Sistema inicializado");
+                            window.location.reload();
+                          } catch (e) {
+                            alert("Error al inicializar: " + (e as Error).message);
+                          }
+                        }
+                      }}
+                      className="w-full text-[10px] uppercase tracking-widest font-bold border border-[#0A0A0A] py-2 hover:bg-[#0A0A0A] hover:text-white transition-colors mb-3"
+                    >
+                      Inicializar Sistema
+                    </button>
                     <div className="flex items-center gap-2 mb-1">
                       <div className={cn(
                         "w-2 h-2 rounded-full animate-pulse",
@@ -1858,7 +1875,7 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[8px] mt-3 opacity-30 italic leading-relaxed uppercase tracking-widest">
-                  DocLedger V6.25 - [NUEVA FUNCIÓN] Visualización y edición de documentos de factura desde movimientos.
+                  DocLedger V6.26 - [OPTIMIZACIÓN] Inicialización de base de datos bajo demanda para Vercel.
                 </p>
               </div>
             </div>
