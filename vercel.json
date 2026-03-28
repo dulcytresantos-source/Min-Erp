@@ -10,6 +10,10 @@
       "destination": "/api/debug/env.ts"
     },
     {
+      "source": "/api/debug/db-raw",
+      "destination": "/api/debug/db-raw.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },
