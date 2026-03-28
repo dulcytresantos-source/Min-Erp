@@ -1,29 +1,37 @@
 {
   "version": 2,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/debug/ping",
-      "destination": "/api/debug/ping.ts"
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["server.ts"]
+      }
     },
     {
-      "source": "/api/debug/env",
-      "destination": "/api/debug/env.ts"
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.ts"
     },
     {
-      "source": "/api/debug/db-raw",
-      "destination": "/api/debug/db-raw.ts"
+      "src": "/(.*)",
+      "dest": "/$1",
+      "continue": true
     },
     {
-      "source": "/api/debug/companies-raw",
-      "destination": "/api/debug/companies-raw.ts"
+      "handle": "filesystem"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index.ts"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
