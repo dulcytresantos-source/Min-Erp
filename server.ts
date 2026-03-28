@@ -1,4 +1,4 @@
-console.log("Server starting (V6.26 - Optimized Initialization)...");
+console.log("Server starting (V6.27 - Optimized Initialization)...");
 if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
 import express from "express";
@@ -8,6 +8,13 @@ import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
+
+// Helper to mask sensitive strings
+function maskString(str: string | undefined) {
+  if (!str) return "MISSING";
+  if (str.length < 10) return "***";
+  return str.substring(0, 4) + "..." + str.substring(str.length - 4);
+}
 
 export const app = express();
 const PORT = 3000;
@@ -78,18 +85,30 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // DEBUG ROUTES (Must be before DB initialization middleware to allow diagnosis)
 app.get("/api/debug/ping", (req, res) => {
-  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.26" });
+  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.27" });
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV, version: "V6.26" });
+  res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV, version: "V6.27" });
+});
+
+app.get("/api/debug/config", (req, res) => {
+  res.json({
+    version: "V6.27",
+    node_version: process.version,
+    env: {
+      TURSO_URL: maskString(process.env.TURSO_DATABASE_URL),
+      TURSO_TOKEN: maskString(process.env.TURSO_AUTH_TOKEN),
+      GEMINI_KEY: maskString(process.env.GEMINI_API_KEY),
+      VERCEL: process.env.VERCEL || "false"
+    }
+  });
 });
 
 app.get("/api/debug/env-check", (req, res) => {
-  const mask = (val: string | undefined) => val ? `${val.substring(0, 8)}...${val.substring(val.length - 4)}` : "MISSING";
   res.json({
-    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
-    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
+    TURSO_DATABASE_URL: maskString(process.env.TURSO_DATABASE_URL),
+    TURSO_AUTH_TOKEN: maskString(process.env.TURSO_AUTH_TOKEN),
     NODE_ENV: process.env.NODE_ENV,
     VERCEL: process.env.VERCEL
   });
@@ -113,11 +132,10 @@ app.get("/api/debug/raw-conn", async (req, res) => {
 });
 
 app.get("/api/debug-env", (req, res) => {
-  const mask = (val: string | undefined) => val ? `${val.substring(0, 4)}...${val.substring(val.length - 4)}` : "MISSING";
   res.json({
-    TURSO_DATABASE_URL: mask(process.env.TURSO_DATABASE_URL),
-    TURSO_AUTH_TOKEN: mask(process.env.TURSO_AUTH_TOKEN),
-    GEMINI_API_KEY: mask(process.env.GEMINI_API_KEY),
+    TURSO_DATABASE_URL: maskString(process.env.TURSO_DATABASE_URL),
+    TURSO_AUTH_TOKEN: maskString(process.env.TURSO_AUTH_TOKEN),
+    GEMINI_API_KEY: maskString(process.env.GEMINI_API_KEY),
     NODE_ENV: process.env.NODE_ENV,
     VERCEL: process.env.VERCEL,
     VERCEL_ENV: process.env.VERCEL_ENV
