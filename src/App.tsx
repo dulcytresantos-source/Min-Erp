@@ -2041,7 +2041,7 @@ export default function App() {
                         if (col.id === 'pending_balance') return (
                           <div key={col.id} className={cn(
                             "p-1.5 text-right font-mono text-[11px] flex items-center justify-end font-bold",
-                            s.pending_balance > 0 ? "text-red-600 group-hover:text-red-400" : "text-emerald-600 group-hover:text-emerald-400"
+                            s.pending_balance > 0 ? "text-rose-600 group-hover:text-rose-400" : "text-teal-600 group-hover:text-teal-400"
                           )}>
                             {formatCurrency(s.pending_balance ?? 0)}
                           </div>
@@ -2315,7 +2315,7 @@ export default function App() {
                               fetchSupplierDetails(selectedSupplier.id);
                               setView('movements');
                             }}
-                            className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] hover:bg-[#E4E3E0] transition-colors border-none outline-none text-red-600"
+                            className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] hover:bg-[#E4E3E0] transition-colors border-none outline-none text-rose-600"
                           >
                             {formatCurrency(selectedSupplier.pending_balance ?? 0)}
                           </button>
@@ -2458,7 +2458,7 @@ export default function App() {
                                   if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
                                   if (col.id === 'reference') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold flex items-center">{inv.reference}</div>;
                                   if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono flex items-center justify-end">{formatCurrency(inv.amount)}</div>;
-                                  if (col.id === 'pending') return <div key={col.id} className="p-1 text-[10px] text-right font-mono text-red-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
+                                  if (col.id === 'pending') return <div key={col.id} className="p-1 text-[10px] text-right font-mono text-rose-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
                                   return null;
                                 })}
                               </div>
@@ -2598,17 +2598,17 @@ export default function App() {
                               if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
                               if (col.id === 'type') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedInvoiceId(inv.id);
-                                      setPreviousView('movements');
-                                      setView('invoice-document');
-                                    }}
-                                    className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-emerald-200 transition-colors"
-                                  >
-                                    Factura
-                                  </button>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedInvoiceId(inv.id);
+                                        setPreviousView('movements');
+                                        setView('invoice-document');
+                                      }}
+                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-indigo-200 transition-colors"
+                                    >
+                                      Factura
+                                    </button>
                                 </div>
                               );
                               if (col.id === 'supplier_name') return (
@@ -2624,7 +2624,7 @@ export default function App() {
                               if (col.id === 'pending') return (
                                 <div key={col.id} className={cn(
                                   "p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
-                                  inv.pending > 0 ? "text-red-600 font-bold" : "text-emerald-600 opacity-40"
+                                  inv.pending > 0 ? "text-rose-600 font-bold" : "text-teal-600 opacity-40"
                                 )}>
                                   {formatCurrency(inv.pending)}
                                 </div>
@@ -2633,7 +2633,7 @@ export default function App() {
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                   <span className={cn(
                                     "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
-                                    inv.status === 'LIQUIDADA' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                                    inv.status === 'LIQUIDADA' ? "bg-teal-100 text-teal-700" : "bg-rose-100 text-rose-700"
                                   )}>
                                     {inv.status}
                                   </span>
@@ -2696,7 +2696,7 @@ export default function App() {
                                       if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
+                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
                                         </div>
                                       );
                                       if (col.id === 'supplier_name') return (
@@ -2707,7 +2707,7 @@ export default function App() {
                                       );
                                       if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>;
                                       if (col.id === 'pending') return (
-                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-blue-600 font-bold">
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-sky-600 font-bold">
                                           {formatCurrency(p.amount)}
                                         </div>
                                       );
@@ -2721,7 +2721,7 @@ export default function App() {
                                           e.stopPropagation();
                                           setIsDeletingPayment(p.id);
                                         }}
-                                        className="text-red-600 hover:text-red-800 transition-colors"
+                                        className="text-rose-600 hover:text-rose-800 transition-colors"
                                         title="Eliminar Liquidación"
                                       >
                                         <Trash2 size={12} />
@@ -2910,8 +2910,8 @@ export default function App() {
                           <div key={col.id} className="p-1 text-center flex items-center justify-center">
                             <span className={cn(
                               "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm",
-                              inv.status === 'Paid' ? "bg-emerald-50 text-emerald-600" : 
-                              inv.status === 'Partial' ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"
+                              inv.status === 'Paid' ? "bg-teal-100 text-teal-700" : 
+                              inv.status === 'Partial' ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"
                             )}>
                               {inv.status === 'Paid' ? 'LIQUIDADA' : 
                                inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'}
@@ -3306,7 +3306,7 @@ export default function App() {
                                 <p className="text-[9px] opacity-40 uppercase tracking-widest font-bold">DOC: {inv.doc_id}</p>
                               </div>
                             </div>
-                            <p className="text-[10px] font-mono font-bold text-red-600">{formatCurrency(inv.pending)}</p>
+                            <p className="text-[10px] font-mono font-bold text-rose-600">{formatCurrency(inv.pending)}</p>
                           </div>
                         ))}
                     </div>
@@ -3314,7 +3314,7 @@ export default function App() {
                 )}
 
                 {liquidationError && (
-                  <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
+                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-sm flex items-center gap-2 text-rose-600 text-[10px] font-bold uppercase tracking-widest">
                     <AlertCircle size={14} />
                     {liquidationError}
                   </div>
@@ -3397,7 +3397,7 @@ export default function App() {
               </div>
               <div className="p-6 flex flex-col gap-6">
                 {liquidationError && (
-                  <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
+                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-sm flex items-center gap-2 text-rose-600 text-[10px] font-bold uppercase tracking-widest">
                     <AlertCircle size={14} />
                     {liquidationError}
                   </div>
