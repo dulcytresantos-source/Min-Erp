@@ -1843,20 +1843,38 @@ export default function App() {
                   <div className="pt-3 border-t border-[#0A0A0A]/5">
                     <button 
                       onClick={async () => {
-                        if (confirm("¿Deseas inicializar la base de datos? Esto creará las tablas y datos de demo si no existen.")) {
+                        if (confirm("¿Deseas verificar/crear la estructura de la base de datos? Esto NO borrará tus datos actuales, solo asegura que las tablas existan.")) {
                           try {
                             const res = await fetch('/api/admin/setup-db');
                             const data = await res.json();
-                            alert(data.message || "Sistema inicializado");
+                            alert(data.message || "Estructura verificada");
                             window.location.reload();
                           } catch (e) {
                             alert("Error al inicializar: " + (e as Error).message);
                           }
                         }
                       }}
-                      className="w-full text-[10px] uppercase tracking-widest font-bold border border-[#0A0A0A] py-2 hover:bg-[#0A0A0A] hover:text-white transition-colors mb-3"
+                      className="w-full text-[10px] uppercase tracking-widest font-bold border border-[#0A0A0A] py-2 hover:bg-[#0A0A0A] hover:text-white transition-colors mb-2"
                     >
-                      Inicializar Sistema
+                      Verificar Estructura (Seguro)
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        if (confirm("¿Deseas crear una empresa con datos de demostración para 2026? Esto añadirá nuevos registros pero no borrará los actuales.")) {
+                          try {
+                            const res = await fetch('/api/admin/seed-demo');
+                            const data = await res.json();
+                            alert(data.message || "Datos de demo creados");
+                            window.location.reload();
+                          } catch (e) {
+                            alert("Error al crear demo: " + (e as Error).message);
+                          }
+                        }
+                      }}
+                      className="w-full text-[10px] uppercase tracking-widest font-bold border border-[#0A0A0A]/20 py-2 hover:bg-[#0A0A0A] hover:text-white transition-colors mb-3"
+                    >
+                      Crear Datos de Demo
                     </button>
                     <div className="flex items-center gap-2 mb-1">
                       <div className={cn(

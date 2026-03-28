@@ -333,112 +333,103 @@ async function initDb() {
       });
     }
 
-    const defaultCompanyResult = await db.execute("SELECT id FROM companies WHERE is_default = 1 LIMIT 1");
-    const defaultCompanyId = defaultCompanyResult.rows.length > 0 ? Number(defaultCompanyResult.rows[0].id) : null;
-
-    if (defaultCompanyId) {
-      // Update existing records with default company if they have NULL company_id
-      await db.execute({
-        sql: "UPDATE suppliers SET company_id = ? WHERE company_id IS NULL",
-        args: [defaultCompanyId],
-      });
-      await db.execute({
-        sql: "UPDATE invoices SET company_id = ? WHERE company_id IS NULL",
-        args: [defaultCompanyId],
-      });
-
-      // Migration: Update supplier IDs to include company_id prefix for independent numbering
-      try {
-        const suppliersToMigrate = await db.execute("SELECT id, company_id FROM suppliers WHERE id NOT LIKE '%-%'");
-        for (const s of suppliersToMigrate.rows) {
-          const newId = `${s.company_id}-${s.id}`;
-          // Update invoices first (FK)
-          await db.execute({
-            sql: "UPDATE invoices SET supplier_id = ? WHERE supplier_id = ?",
-            args: [newId, s.id]
-          });
-          // Update supplier
-          await db.execute({
-            sql: "UPDATE suppliers SET id = ? WHERE id = ?",
-            args: [newId, s.id]
-          });
-        }
-      } catch (e) {
-        console.error("Migration of supplier IDs failed:", e);
-      }
-    }
-
-    const countResult = await db.execute("SELECT COUNT(*) as count FROM suppliers");
-    const count = Number(countResult.rows[0].count);
-
-    if (count === 0 && defaultCompanyId) {
-      const seedSuppliers = [
-        { id: 'PRov001', name: 'Coca-Cola European Partners', cif: 'A86561712', email: 'billing@cocacola.com', address: 'Calle de la Ribera del Loira, 20', city: 'Madrid', province: 'Madrid', zip_code: '28042', country_code: 'ES', alias: 'COCACOLA', phone: '913345000' },
-        { id: 'PRov002', name: 'IBM España S.A.', cif: 'A28010644', email: 'invoices@es.ibm.com', address: 'Calle de Santa Hortensia, 26', city: 'Madrid', province: 'Madrid', zip_code: '28002', country_code: 'ES', alias: 'IBM', phone: '913976000' },
-        { id: 'PRov003', name: 'Telefónica S.A.', cif: 'A28015865', email: 'proveedores@telefonica.com', address: 'Gran Vía, 28', city: 'Madrid', province: 'Madrid', zip_code: '28013', country_code: 'ES', alias: 'TELEFONICA', phone: '915840306' },
-        { id: 'PRov004', name: 'Inditex S.A.', cif: 'A15075062', email: 'finance@inditex.com', address: 'Avenida de la Diputación', city: 'Arteixo', province: 'A Coruña', zip_code: '15143', country_code: 'ES', alias: 'INDITEX', phone: '981185400' },
-        { id: 'PRov005', name: 'Banco Santander S.A.', cif: 'A39000013', email: 'pagos@santander.com', address: 'Paseo de Pereda, 9-12', city: 'Santander', province: 'Cantabria', zip_code: '39004', country_code: 'ES', alias: 'SANTANDER', phone: '942206100' }
-      ];
-
-      for (const s of seedSuppliers) {
-        const newId = `${defaultCompanyId}-${s.id}`;
-        await db.execute({
-          sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          args: [newId, defaultCompanyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
-        });
-      }
-
-      // Seed Invoices & Payments (Demo Movements 2026)
-      const suppliers = ['PRov001', 'PRov002', 'PRov003', 'PRov004', 'PRov005'];
-      const statuses = ['Paid', 'Partial', 'Pending'];
-      
-      for (const sId of suppliers) {
-        const count = sId === 'PRov001' ? 20 : 9;
-        const alias = seedSuppliers.find(s => s.id === sId)?.alias || 'SUP';
-        
-        for (let i = 1; i <= count; i++) {
-          const month = Math.floor((i - 1) / (count / 12)) + 1;
-          const day = (i * 3) % 28 + 1;
-          const dateStr = `2026-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-          const dueDate = `2026-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-          
-          const status = statuses[i % 3];
-          const base = 100 * i + (Math.random() * 50);
-          const total = base * 1.21;
-          const docId = `26-${alias}-${i.toString().padStart(2, '0')}`;
-          const invNum = `INV-26-${i.toString().padStart(3, '0')}`;
-
-          const result = await db.execute({
-            sql: "INSERT INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            args: [defaultCompanyId, sId, docId, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
-          });
-          
-          const invoiceId = Number(result.lastInsertRowid);
-
-          if (status === 'Paid') {
-            await db.execute({
-              sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
-              args: [invoiceId, dueDate, total, 'Transfer', `BANK-26-${sId}-${i}`]
-            });
-          } else if (status === 'Partial') {
-            await db.execute({
-              sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
-              args: [invoiceId, dateStr, total / 2, 'Transfer', `BANK-26-PART-${sId}-${i}`]
-            });
-          }
-        }
-      }
-      console.log("Extensive 2026 Demo Data initialized");
-    }
-
     console.log("Database initialized");
     dbInitialized = true;
   } catch (err) {
     dbInitError = (err as Error).message;
     console.error("Database initialization failed:", err);
-    // Even if it fails, we mark it as "initialized" to avoid infinite waiting, 
-    // but the app might fail on subsequent queries.
     dbInitialized = true;
+  }
+}
+
+// Seed Demo Data
+async function seedDemoData() {
+  const db = getDb();
+  
+  // 1. Ensure we have a company
+  let companyId: number;
+  const companyResult = await db.execute("SELECT id FROM companies WHERE name = 'EMPRESA DEMO S.L.' LIMIT 1");
+  
+  if (companyResult.rows.length === 0) {
+    const res = await db.execute({
+      sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
+      args: ["EMPRESA DEMO S.L.", "AVENIDA DE LAS DEMOS 123", "B99999999", 0]
+    });
+    companyId = Number(res.lastInsertRowid);
+  } else {
+    companyId = Number(companyResult.rows[0].id);
+  }
+
+  const seedSuppliers = [
+    { id: 'PRov001', name: 'Coca-Cola European Partners', cif: 'A86561712', email: 'billing@cocacola.com', address: 'Calle de la Ribera del Loira, 20', city: 'Madrid', province: 'Madrid', zip_code: '28042', country_code: 'ES', alias: 'COCACOLA', phone: '913345000' },
+    { id: 'PRov002', name: 'IBM España S.A.', cif: 'A28010644', email: 'invoices@es.ibm.com', address: 'Calle de Santa Hortensia, 26', city: 'Madrid', province: 'Madrid', zip_code: '28002', country_code: 'ES', alias: 'IBM', phone: '913976000' },
+    { id: 'PRov003', name: 'Telefónica S.A.', cif: 'A28015865', email: 'proveedores@telefonica.com', address: 'Gran Vía, 28', city: 'Madrid', province: 'Madrid', zip_code: '28013', country_code: 'ES', alias: 'TELEFONICA', phone: '915840306' },
+    { id: 'PRov004', name: 'Inditex S.A.', cif: 'A15075062', email: 'finance@inditex.com', address: 'Avenida de la Diputación', city: 'Arteixo', province: 'A Coruña', zip_code: '15143', country_code: 'ES', alias: 'INDITEX', phone: '981185400' },
+    { id: 'PRov005', name: 'Banco Santander S.A.', cif: 'A39000013', email: 'pagos@santander.com', address: 'Paseo de Pereda, 9-12', city: 'Santander', province: 'Cantabria', zip_code: '39004', country_code: 'ES', alias: 'SANTANDER', phone: '942206100' }
+  ];
+
+  for (const s of seedSuppliers) {
+    const newId = `${companyId}-${s.id}`;
+    // Check if supplier exists
+    const exists = await db.execute({
+      sql: "SELECT id FROM suppliers WHERE id = ? AND company_id = ?",
+      args: [newId, companyId]
+    });
+    if (exists.rows.length === 0) {
+      await db.execute({
+        sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [newId, companyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
+      });
+    }
+  }
+
+  // Seed Invoices & Payments (Demo Movements 2026)
+  const suppliers = ['PRov001', 'PRov002', 'PRov003', 'PRov004', 'PRov005'];
+  const statuses = ['Paid', 'Partial', 'Pending'];
+  
+  for (const sId of suppliers) {
+    const fullSId = `${companyId}-${sId}`;
+    const count = sId === 'PRov001' ? 15 : 5;
+    const alias = seedSuppliers.find(s => s.id === sId)?.alias || 'SUP';
+    
+    for (let i = 1; i <= count; i++) {
+      const month = Math.floor((i - 1) / (count / 12)) + 1;
+      const day = (i * 3) % 28 + 1;
+      const dateStr = `2026-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const dueDate = `2026-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      
+      const status = statuses[i % 3];
+      const base = 100 * i + (Math.random() * 50);
+      const total = base * 1.21;
+      const invNum = `DEMO-26-${alias}-${i.toString().padStart(3, '0')}`;
+
+      // Check if invoice exists
+      const invExists = await db.execute({
+        sql: "SELECT id FROM invoices WHERE invoice_number = ? AND company_id = ?",
+        args: [invNum, companyId]
+      });
+
+      if (invExists.rows.length === 0) {
+        const result = await db.execute({
+          sql: "INSERT INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          args: [companyId, fullSId, invNum, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
+        });
+        
+        const invoiceId = Number(result.lastInsertRowid);
+
+        if (status === 'Paid') {
+          await db.execute({
+            sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
+            args: [invoiceId, dueDate, total, 'Transfer', `BANK-DEMO-${sId}-${i}`]
+          });
+        } else if (status === 'Partial') {
+          await db.execute({
+            sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
+            args: [invoiceId, dateStr, total / 2, 'Transfer', `BANK-DEMO-PART-${sId}-${i}`]
+          });
+        }
+      }
+    }
   }
 }
 
@@ -457,7 +448,24 @@ app.get("/api/admin/setup-db", async (req, res) => {
     await initDb();
     res.json({ 
       status: "ok", 
-      message: "Database schema and demo data initialized successfully.",
+      message: "Estructura de base de datos verificada/creada correctamente. No se han borrado datos existentes.",
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      status: "error", 
+      message: (err as Error).message 
+    });
+  }
+});
+
+app.get("/api/admin/seed-demo", async (req, res) => {
+  try {
+    console.log("Demo Seeding Triggered...");
+    await seedDemoData();
+    res.json({ 
+      status: "ok", 
+      message: "Empresa de demostración creada con éxito con movimientos para 2026.",
       timestamp: new Date().toISOString()
     });
   } catch (err) {
