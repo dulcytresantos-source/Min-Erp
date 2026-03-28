@@ -390,6 +390,7 @@ export default function App() {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [systemDate, setSystemDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [showSettings, setShowSettings] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
   const [debugLogs, setDebugLogs] = useState<{time: string, type: 'info' | 'error' | 'api', message: string}[]>([]);
 
   const logDebug = (type: 'info' | 'error' | 'api', message: string) => {
@@ -1884,6 +1885,22 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="pt-6 border-t border-[#0A0A0A]/10">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Consola de Depuración</label>
+                  <button 
+                    onClick={() => setShowConsole(!showConsole)}
+                    className={cn(
+                      "px-3 py-1 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      showConsole ? "bg-violet-600 text-white" : "bg-[#F5F5F4] text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    {showConsole ? "Visible" : "Oculta"}
+                  </button>
+                </div>
+                <p className="text-[9px] mt-2 opacity-40 italic">Muestra información técnica y registros de la base de datos en tiempo real.</p>
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
@@ -3648,38 +3665,53 @@ export default function App() {
         )}
 
         {/* DEBUG CONSOLE PANEL */}
-        <div className="fixed bottom-4 right-4 w-[450px] h-[350px] bg-[#0A0A0A] border border-white/10 rounded-sm shadow-2xl flex flex-col z-[100] overflow-hidden">
-          <div className="p-3 bg-white/5 border-b border-white/10 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Terminal size={14} className="text-violet-400" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Debug Console</span>
+        {showConsole && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-4 right-4 w-[450px] h-[350px] bg-[#0A0A0A] border border-white/10 rounded-sm shadow-2xl flex flex-col z-[100] overflow-hidden"
+          >
+            <div className="p-3 bg-white/5 border-b border-white/10 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Terminal size={14} className="text-violet-400" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Debug Console</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setDebugLogs([])}
+                  className="text-[9px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors"
+                >
+                  Clear Logs
+                </button>
+                <button 
+                  onClick={() => setShowConsole(false)}
+                  className="text-white/40 hover:text-white transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
-            <button 
-              onClick={() => setDebugLogs([])}
-              className="text-[9px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors"
-            >
-              Clear Logs
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-relaxed space-y-1">
-            {debugLogs.length === 0 ? (
-              <div className="text-white/20 italic">No logs yet...</div>
-            ) : (
-              debugLogs.map((log, i) => (
-                <div key={i} className={cn(
-                  "break-all",
-                  log.type === 'error' ? "text-red-400" : 
-                  log.type === 'api' ? "text-emerald-400" : 
-                  "text-white/60"
-                )}>
-                  <span className="opacity-30 mr-2">[{log.time}]</span>
-                  <span className="font-bold mr-2">[{log.type.toUpperCase()}]</span>
-                  {log.message}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+            <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-relaxed space-y-1">
+              {debugLogs.length === 0 ? (
+                <div className="text-white/20 italic">No logs yet...</div>
+              ) : (
+                debugLogs.map((log, i) => (
+                  <div key={i} className={cn(
+                    "break-all",
+                    log.type === 'error' ? "text-red-400" : 
+                    log.type === 'api' ? "text-emerald-400" : 
+                    "text-white/60"
+                  )}>
+                    <span className="opacity-30 mr-2">[{log.time}]</span>
+                    <span className="font-bold mr-2">[{log.type.toUpperCase()}]</span>
+                    {log.message}
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
