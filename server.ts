@@ -400,11 +400,23 @@ app.get("/api/admin/seed-demo", async (req, res) => {
 });
 
 app.get("/api/companies", async (req, res) => {
+  // PRUEBA BRUTA DE BYPASS: Usamos un cliente fresco directo (como en debug-raw)
+  const url = process.env.TURSO_DATABASE_URL;
+  const token = process.env.TURSO_AUTH_TOKEN;
+
+  if (!url || !token) {
+    return res.status(500).json({ error: "Missing TURSO credentials in bypass test" });
+  }
+
   try {
-    const result = await db.execute("SELECT * FROM companies ORDER BY name ASC");
+    const tempDb = createClient({ url, authToken: token });
+    const result = await tempDb.execute("SELECT * FROM companies ORDER BY name ASC");
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ 
+      error: (err as Error).message,
+      phase: "bypass-test-error"
+    });
   }
 });
 

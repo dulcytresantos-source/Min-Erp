@@ -1672,7 +1672,23 @@ export default function App() {
               <button onClick={() => setShowSettings(false)} className="opacity-40 hover:opacity-100"><X size={18} /></button>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto max-h-[calc(100vh-120px)] pr-2 -mr-2 scrollbar-hide">
+              <div className="bg-violet-600 text-white p-3 rounded-sm mb-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[8px] uppercase tracking-widest opacity-80">Versión del Sistema</span>
+                  <span className="text-[10px] font-bold tracking-tight">V6.28</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full animate-pulse",
+                    (window.location.hostname.includes('-dev-') || window.location.hostname.includes('-pre-')) ? "bg-white" : "bg-green-400"
+                  )} />
+                  <span className="text-[9px] font-bold uppercase tracking-tight">
+                    {(window.location.hostname.includes('-dev-') || window.location.hostname.includes('-pre-')) ? "Entorno de Pruebas" : "Entorno de Producción"}
+                  </span>
+                </div>
+              </div>
+
               <div>
                 <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-2">Fecha del Sistema</label>
                 <input 
@@ -1833,14 +1849,8 @@ export default function App() {
               </div>
 
               <div className="pt-6 border-t border-[#0A0A0A]/10">
-                <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 block mb-3">Versión del Sistema</label>
                 <div className="bg-[#F5F5F4] p-4 rounded-sm space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase tracking-widest opacity-60">Versión</span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight bg-violet-600 text-white px-2 py-1 rounded-sm">V6.28</span>
-                  </div>
-                  
-                  <div className="pt-3 border-t border-[#0A0A0A]/5">
+                  <div className="pt-1">
                     <button 
                       onClick={async () => {
                         if (confirm("¿Deseas verificar/crear la estructura de la base de datos? Esto NO borrará tus datos actuales, solo asegura que las tablas existan.")) {
@@ -1876,17 +1886,8 @@ export default function App() {
                     >
                       Crear Datos de Demo
                     </button>
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full animate-pulse",
-                        window.location.hostname.includes('-dev-') ? "bg-violet-600" : "bg-green-500"
-                      )} />
-                      <span className="text-[10px] font-bold uppercase tracking-tight">
-                        {window.location.hostname.includes('-dev-') ? "Entorno de Pruebas" : "Entorno de Producción"}
-                      </span>
-                    </div>
                     <p className="text-[8px] opacity-40 leading-tight uppercase tracking-widest">
-                      {window.location.hostname.includes('-dev-') 
+                      {window.location.hostname.includes('-dev-') || window.location.hostname.includes('-pre-')
                         ? "Estás viendo los cambios en desarrollo" 
                         : "Esta es la versión compartida/publicada"}
                     </p>
