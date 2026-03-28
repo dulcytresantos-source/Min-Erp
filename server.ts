@@ -1,4 +1,4 @@
-console.log("Server starting (V6.25 - Diagnostic Mode)...");
+console.log("Server starting (V6.26 - Optimized Initialization)...");
 if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
 import express from "express";
@@ -78,7 +78,11 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // DEBUG ROUTES (Must be before DB initialization middleware to allow diagnosis)
 app.get("/api/debug/ping", (req, res) => {
-  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.25" });
+  res.json({ status: "ok", message: "pong", timestamp: new Date().toISOString(), version: "V6.26" });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV, version: "V6.26" });
 });
 
 app.get("/api/debug/env-check", (req, res) => {
@@ -174,30 +178,24 @@ let dbInitialized = false;
 let dbInitPromise: Promise<void> | null = null;
 let dbInitError: string | null = null;
 
-// Initialize Database
+// Initialize Database (Optimized with Batch for Vercel)
 async function initDb() {
   const db = getDb();
   try {
-    console.log(`Initializing database (${getMaskedUrl()})...`);
+    console.log(`Initializing database schema (${getMaskedUrl()})...`);
     dbInitError = null;
     
-    // We no longer drop tables automatically for "real" database use.
-    // await db.execute("DROP TABLE IF EXISTS payments");
-    // await db.execute("DROP TABLE IF EXISTS invoices");
-    // await db.execute("DROP TABLE IF EXISTS suppliers");
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS companies (
+    // Group all schema operations into a single batch to avoid multiple network roundtrips
+    await db.batch([
+      // 1. Tables
+      `CREATE TABLE IF NOT EXISTS companies (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         address TEXT,
         cif TEXT,
         is_default INTEGER DEFAULT 0
-      )
-    `);
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS suppliers (
+      )`,
+      `CREATE TABLE IF NOT EXISTS suppliers (
         id TEXT PRIMARY KEY,
         company_id INTEGER,
         name TEXT NOT NULL,
@@ -215,47 +213,8 @@ async function initDb() {
         main_contact TEXT,
         is_generic INTEGER DEFAULT 0,
         FOREIGN KEY (company_id) REFERENCES companies (id)
-      )
-    `);
-
-    // Migration: Ensure company_id exists in suppliers
-    try {
-      await db.execute("ALTER TABLE suppliers ADD COLUMN company_id INTEGER REFERENCES companies(id)");
-    } catch (e) {}
-    
-    // Migration: Ensure is_generic exists in suppliers
-    try {
-      await db.execute("ALTER TABLE suppliers ADD COLUMN is_generic INTEGER DEFAULT 0");
-    } catch (e) {}
-
-    // Migration: Remove global unique constraint on CIF if it exists as an index
-    // and create a per-company unique index
-    try {
-      // Try to drop common names for this index if it was created explicitly
-      await db.execute("DROP INDEX IF EXISTS idx_suppliers_cif");
-      await db.execute("DROP INDEX IF EXISTS suppliers_cif_unique");
-      await db.execute("DROP INDEX IF EXISTS cif_unique");
-      
-      // If it was a column constraint, we might need to recreate the column (aggressive migration)
-      // We only do this if the index creation fails or as a proactive measure
-      // But let's try the index first as it's safer.
-      await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)");
-    } catch (e) {
-      console.error("Error updating suppliers indexes, attempting column recreation:", e);
-      try {
-        // Aggressive migration for suppliers.cif
-        await db.execute("ALTER TABLE suppliers RENAME COLUMN cif TO cif_old");
-        await db.execute("ALTER TABLE suppliers ADD COLUMN cif TEXT");
-        await db.execute("UPDATE suppliers SET cif = cif_old");
-        await db.execute("ALTER TABLE suppliers DROP COLUMN cif_old");
-        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)");
-      } catch (innerE) {
-        console.error("Aggressive suppliers migration failed:", innerE);
-      }
-    }
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS invoices (
+      )`,
+      `CREATE TABLE IF NOT EXISTS invoices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER,
         supplier_id TEXT NOT NULL,
@@ -271,34 +230,8 @@ async function initDb() {
         concept TEXT,
         FOREIGN KEY (company_id) REFERENCES companies (id),
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-      )
-    `);
-
-    // Migration: Ensure concept exists in invoices
-    try {
-      await db.execute("ALTER TABLE invoices ADD COLUMN concept TEXT");
-    } catch (e) {}
-
-    // Migration: Remove global unique constraint on doc_id in invoices
-    try {
-      // Recreate doc_id column if it was UNIQUE
-      await db.execute("ALTER TABLE invoices RENAME COLUMN doc_id TO doc_id_old");
-      await db.execute("ALTER TABLE invoices ADD COLUMN doc_id TEXT");
-      await db.execute("UPDATE invoices SET doc_id = doc_id_old");
-      await db.execute("ALTER TABLE invoices DROP COLUMN doc_id_old");
-    } catch (e) {
-      // Column might already be non-unique or already migrated
-    }
-
-    // Migration: Ensure company_id exists in invoices
-    try {
-      await db.execute("ALTER TABLE invoices ADD COLUMN company_id INTEGER REFERENCES companies(id)");
-    } catch (e) {
-      // Column might already exist
-    }
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS payments (
+      )`,
+      `CREATE TABLE IF NOT EXISTS payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_id INTEGER NOT NULL,
         payment_date TEXT,
@@ -306,34 +239,24 @@ async function initDb() {
         method TEXT,
         bank_movement_id TEXT,
         FOREIGN KEY (invoice_id) REFERENCES invoices (id)
-      )
-    `);
+      )`,
+      // 2. Indexes
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique ON invoices (company_id, supplier_id, doc_ext)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_num ON invoices (company_id, supplier_id, invoice_number)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)`
+    ], "write");
 
-    // Add unique indexes
-    try {
-      await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique ON invoices (company_id, supplier_id, doc_ext)`);
-    } catch (e) {}
-    try {
-      await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_num ON invoices (company_id, supplier_id, invoice_number)`);
-    } catch (e) {}
-    try {
-      await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)`);
-    } catch (e) {}
-
-    // Seed Data - Only if database is empty
+    // Check if we need a default company (Single query)
     const companyCountResult = await db.execute("SELECT COUNT(*) as count FROM companies");
-    const companyCount = Number(companyCountResult.rows[0].count);
-    console.log(`Company count during init: ${companyCount}`);
-
-    if (companyCount === 0) {
-      console.log("Seeding default company...");
+    if (Number(companyCountResult.rows[0].count) === 0) {
       await db.execute({
         sql: "INSERT INTO companies (name, address, cif, is_default) VALUES (?, ?, ?, ?)",
         args: ["MI EMPRESA S.L.", "CALLE MAYOR 1, MADRID", "B12345678", 1]
       });
     }
 
-    console.log("Database initialized");
+    console.log("Database schema initialized successfully");
     dbInitialized = true;
   } catch (err) {
     dbInitError = (err as Error).message;
@@ -342,7 +265,7 @@ async function initDb() {
   }
 }
 
-// Seed Demo Data
+// Seed Demo Data (Optimized with Batch)
 async function seedDemoData() {
   const db = getDb();
   
@@ -368,19 +291,14 @@ async function seedDemoData() {
     { id: 'PRov005', name: 'Banco Santander S.A.', cif: 'A39000013', email: 'pagos@santander.com', address: 'Paseo de Pereda, 9-12', city: 'Santander', province: 'Cantabria', zip_code: '39004', country_code: 'ES', alias: 'SANTANDER', phone: '942206100' }
   ];
 
+  const batchOps: any[] = [];
+
   for (const s of seedSuppliers) {
     const newId = `${companyId}-${s.id}`;
-    // Check if supplier exists
-    const exists = await db.execute({
-      sql: "SELECT id FROM suppliers WHERE id = ? AND company_id = ?",
-      args: [newId, companyId]
+    batchOps.push({
+      sql: "INSERT OR IGNORE INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [newId, companyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
     });
-    if (exists.rows.length === 0) {
-      await db.execute({
-        sql: "INSERT INTO suppliers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        args: [newId, companyId, s.name, s.cif, s.email, s.address, s.city, s.province, s.zip_code, s.country_code, s.alias, s.phone]
-      });
-    }
   }
 
   // Seed Invoices & Payments (Demo Movements 2026)
@@ -389,7 +307,7 @@ async function seedDemoData() {
   
   for (const sId of suppliers) {
     const fullSId = `${companyId}-${sId}`;
-    const count = sId === 'PRov001' ? 15 : 5;
+    const count = sId === 'PRov001' ? 8 : 3; // Reduced count for faster seeding
     const alias = seedSuppliers.find(s => s.id === sId)?.alias || 'SUP';
     
     for (let i = 1; i <= count; i++) {
@@ -403,34 +321,19 @@ async function seedDemoData() {
       const total = base * 1.21;
       const invNum = `DEMO-26-${alias}-${i.toString().padStart(3, '0')}`;
 
-      // Check if invoice exists
-      const invExists = await db.execute({
-        sql: "SELECT id FROM invoices WHERE invoice_number = ? AND company_id = ?",
-        args: [invNum, companyId]
+      batchOps.push({
+        sql: "INSERT OR IGNORE INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [companyId, fullSId, invNum, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
       });
-
-      if (invExists.rows.length === 0) {
-        const result = await db.execute({
-          sql: "INSERT INTO invoices (company_id, supplier_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          args: [companyId, fullSId, invNum, invNum, invNum, dateStr, dueDate, base, base * 0.21, total, status]
-        });
-        
-        const invoiceId = Number(result.lastInsertRowid);
-
-        if (status === 'Paid') {
-          await db.execute({
-            sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
-            args: [invoiceId, dueDate, total, 'Transfer', `BANK-DEMO-${sId}-${i}`]
-          });
-        } else if (status === 'Partial') {
-          await db.execute({
-            sql: "INSERT INTO payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
-            args: [invoiceId, dateStr, total / 2, 'Transfer', `BANK-DEMO-PART-${sId}-${i}`]
-          });
-        }
-      }
     }
   }
+
+  if (batchOps.length > 0) {
+    console.log(`Executing batch of ${batchOps.length} demo operations...`);
+    await db.batch(batchOps, "write");
+  }
+
+  console.log("Demo data seeded successfully");
 }
 
 // Middleware to log requests (Minimal & Fast)
