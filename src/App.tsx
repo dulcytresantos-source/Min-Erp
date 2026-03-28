@@ -390,6 +390,14 @@ export default function App() {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [systemDate, setSystemDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [showSettings, setShowSettings] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<{time: string, type: 'info' | 'error' | 'api', message: string}[]>([]);
+
+  const logDebug = (type: 'info' | 'error' | 'api', message: string) => {
+    const time = format(new Date(), "HH:mm:ss");
+    console.log(`[${time}][${type.toUpperCase()}] ${message}`);
+    setDebugLogs(prev => [...prev, { time, type, message }].slice(-100)); // Keep last 100 logs
+  };
+
   const [uploadLog, setUploadLog] = useState<LogEntry[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: '', address: '', cif: '' });
@@ -644,42 +652,57 @@ export default function App() {
   };
 
   const fetchCompanies = async () => {
+    logDebug("info", "Calling /api/companies");
     try {
       const response = await fetch("/api/companies");
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setCompanies(data);
-        if (data.length > 0 && !activeCompanyId) {
-          const defaultCompany = data.find((c: Company) => c.is_default === 1) || data[0];
-          setActiveCompanyId(defaultCompany.id);
-        }
-      } else {
-        console.error("Error fetching companies: response is not an array", data);
+      logDebug("info", `Response status: ${response.status}`);
+      
+      const text = await response.text();
+      logDebug("api", "RAW RESPONSE: " + (text.length > 500 ? text.substring(0, 500) + "..." : text));
+
+      if (!response.ok) {
+        logDebug("error", `HTTP ${response.status}: ${text.substring(0, 100)}`);
       }
-    } catch (error) {
+
+      try {
+        const data = JSON.parse(text);
+        logDebug("api", "PARSED JSON OK");
+        if (Array.isArray(data)) {
+          setCompanies(data);
+          if (data.length > 0 && !activeCompanyId) {
+            const defaultCompany = data.find((c: Company) => c.is_default === 1) || data[0];
+            setActiveCompanyId(defaultCompany.id);
+          }
+        } else {
+          logDebug("error", "Response is not an array");
+          console.error("Error fetching companies: response is not an array", data);
+        }
+      } catch (e: any) {
+        logDebug("error", "JSON PARSE FAILED: " + e.message);
+      }
+    } catch (error: any) {
+      logDebug("error", "FETCH FAILED: " + error.message);
       console.error("Error fetching companies:", error);
     }
   };
 
   const fetchData = useCallback(async () => {
     if (!activeCompanyId) return;
+    logDebug("info", `Fetching data for company ${activeCompanyId}`);
     try {
       const res = await fetch(`/api/suppliers?companyId=${activeCompanyId}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setSuppliers(data);
-      } else {
-        console.error("Error fetching suppliers: response is not an array", data);
+      const suppliersData = await res.json();
+      if (Array.isArray(suppliersData)) {
+        setSuppliers(suppliersData);
       }
 
       const invRes = await fetch(`/api/invoices/all?companyId=${activeCompanyId}`);
       const invData = await invRes.json();
       if (Array.isArray(invData)) {
         setAllInvoices(invData);
-      } else {
-        console.error("Error fetching invoices: response is not an array", invData);
       }
-    } catch (error) {
+    } catch (error: any) {
+      logDebug("error", "fetchData FAILED: " + error.message);
       console.error("Error fetching data:", error);
     }
   }, [activeCompanyId]);
@@ -704,13 +727,25 @@ export default function App() {
 
   const fetchDbStatus = async () => {
     setIsRefreshingDb(true);
+    logDebug("info", "Calling /api/debug-db");
     try {
       const res = await fetch("/api/debug-db");
+      logDebug("info", `Response status: ${res.status}`);
+      
       let data;
+      const text = await res.text();
+      logDebug("api", "RAW RESPONSE (debug-db): " + (text.length > 200 ? text.substring(0, 200) + "..." : text));
+
       if (res.ok) {
-        data = await res.json();
+        try {
+          data = JSON.parse(text);
+          logDebug("api", "PARSED JSON OK");
+        } catch (e: any) {
+          logDebug("error", "JSON PARSE FAILED: " + e.message);
+          data = { status: "error", message: `Invalid JSON: ${text.substring(0, 100)}` };
+        }
       } else {
-        const text = await res.text();
+        logDebug("error", `HTTP ${res.status}: ${text.substring(0, 100)}`);
         try {
           data = JSON.parse(text);
         } catch (e) {
@@ -719,12 +754,15 @@ export default function App() {
       }
       setDbStatus(data);
       
+      logDebug("info", "Calling /api/debug-env");
       const envRes = await fetch("/api/debug-env");
       if (envRes.ok) {
         const envData = await envRes.json();
         setEnvStatus(envData);
+        logDebug("info", "Env status fetched OK");
       }
-    } catch (err) {
+    } catch (err: any) {
+      logDebug("error", "fetchDbStatus FAILED: " + err.message);
       console.error("Error fetching db status:", err);
       setDbStatus({ status: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -3608,6 +3646,40 @@ export default function App() {
             </motion.div>
           </div>
         )}
+
+        {/* DEBUG CONSOLE PANEL */}
+        <div className="fixed bottom-4 right-4 w-[450px] h-[350px] bg-[#0A0A0A] border border-white/10 rounded-sm shadow-2xl flex flex-col z-[100] overflow-hidden">
+          <div className="p-3 bg-white/5 border-b border-white/10 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Terminal size={14} className="text-violet-400" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Debug Console</span>
+            </div>
+            <button 
+              onClick={() => setDebugLogs([])}
+              className="text-[9px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors"
+            >
+              Clear Logs
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-relaxed space-y-1">
+            {debugLogs.length === 0 ? (
+              <div className="text-white/20 italic">No logs yet...</div>
+            ) : (
+              debugLogs.map((log, i) => (
+                <div key={i} className={cn(
+                  "break-all",
+                  log.type === 'error' ? "text-red-400" : 
+                  log.type === 'api' ? "text-emerald-400" : 
+                  "text-white/60"
+                )}>
+                  <span className="opacity-30 mr-2">[{log.time}]</span>
+                  <span className="font-bold mr-2">[{log.type.toUpperCase()}]</span>
+                  {log.message}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </AnimatePresence>
     </div>
   );
