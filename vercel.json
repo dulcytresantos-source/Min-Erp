@@ -14,6 +14,10 @@
       "destination": "/api/debug/db-raw.ts"
     },
     {
+      "source": "/api/debug/companies-raw",
+      "destination": "/api/debug/companies-raw.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

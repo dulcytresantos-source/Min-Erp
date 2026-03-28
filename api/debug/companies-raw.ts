@@ -1,0 +1,37 @@
+import { createClient } from "@libsql/client";
+
+export default async function handler(req: any, res: any) {
+  const url = process.env.TURSO_DATABASE_URL;
+  const token = process.env.TURSO_AUTH_TOKEN;
+
+  if (!url || !token) {
+    return res.status(500).json({ ok: false, error: "Missing credentials" });
+  }
+
+  try {
+    const db = createClient({ url, authToken: token });
+    const start = Date.now();
+    
+    // Intentamos leer la tabla real de empresas
+    const result = await db.execute("SELECT * FROM companies LIMIT 5");
+    
+    const end = Date.now();
+
+    return res.status(200).json({
+      ok: true,
+      phase: "companies-raw-check",
+      message: "¡LECTURA DE EMPRESAS EXITOSA!",
+      count: result.rows.length,
+      latency: `${end - start}ms`,
+      data: result.rows
+    });
+  } catch (e: any) {
+    // Si falla aquí, es probable que la tabla no exista aún
+    return res.status(500).json({
+      ok: false,
+      phase: "companies-raw-catch",
+      error: e?.message || String(e),
+      hint: "Si el error es 'no such table', es que initDb() no ha llegado a crearla en Vercel."
+    });
+  }
+}
