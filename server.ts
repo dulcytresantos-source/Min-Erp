@@ -1,4 +1,5 @@
-console.log("Server starting (V6.23)...");
+console.log("Server starting (V6.24)...");
+if (process.env.VERCEL) console.log("Running in VERCEL environment");
 
 import express from "express";
 import path from "path";
@@ -413,17 +414,31 @@ async function initDb() {
 // Middleware to ensure database is initialized before handling requests
 // (Skip for debug routes)
 app.use(async (req, res, next) => {
+  // Log request for debugging in Vercel
+  if (process.env.VERCEL) {
+    console.log(`[${req.method}] ${req.path}`);
+  }
+
   if (req.path.startsWith('/api/debug')) {
     return next();
   }
   
-  if (!dbInitialized) {
-    if (!dbInitPromise) {
-      dbInitPromise = initDb();
+  try {
+    if (!dbInitialized) {
+      if (!dbInitPromise) {
+        console.log("Triggering lazy DB initialization...");
+        dbInitPromise = initDb();
+      }
+      await dbInitPromise;
     }
-    await dbInitPromise;
+    next();
+  } catch (err) {
+    console.error("Middleware DB Init Error:", err);
+    res.status(500).json({ 
+      error: "Database initialization failed", 
+      details: (err as Error).message 
+    });
   }
-  next();
 });
 
 // API Routes
