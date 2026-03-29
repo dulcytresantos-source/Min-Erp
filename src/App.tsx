@@ -2025,7 +2025,7 @@ export default function App() {
             >
               <div className="flex justify-between items-end mb-8">
                 <div>
-                  <h2 className="text-4xl font-bold tracking-tighter text-red-600">Maestro de Proveedores</h2>
+                  <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Maestro de Proveedores</h2>
                   <p className="text-xs font-bold uppercase tracking-widest opacity-40">Gestión de Cuentas a Pagar / Ledger de Entidades</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2637,7 +2637,7 @@ export default function App() {
                           <ArrowLeft size={20} />
                         </button>
                       )}
-                      <h2 className="text-4xl font-bold tracking-tighter">Movimientos Proveedor</h2>
+                      <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Movimientos Proveedor</h2>
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest opacity-40 mt-2">
                       {movementsFilterSupplierId 
@@ -2897,7 +2897,7 @@ export default function App() {
             >
               <div className="flex justify-between items-center mb-8">
                 <div>
-                  <h2 className="text-4xl font-bold tracking-tighter">Histórico de Facturas</h2>
+                  <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Histórico de Facturas</h2>
                   <p className="text-xs font-bold uppercase tracking-widest opacity-40">Registro global de todas las facturas procesadas.</p>
                 </div>
                 <div className="flex gap-3 items-end">
@@ -3099,7 +3099,7 @@ export default function App() {
               className="max-w-4xl mx-auto"
             >
               <div className="mb-12">
-                <h2 className="text-4xl font-bold tracking-tighter">Alta de Facturas</h2>
+                <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Alta de Facturas</h2>
                 <p className="text-sm opacity-40 font-medium">Sube múltiples facturas. El sistema las clasificará automáticamente.</p>
               </div>
 

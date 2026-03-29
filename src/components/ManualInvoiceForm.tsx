@@ -237,7 +237,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
             <div className="flex flex-col">
               {/* DOC (Internal ID) */}
               <div className="flex border-b border-black/10">
-                <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">DOC*</div>
+                <div className="w-24 p-2 bg-black/5 text-[9px] font-bold uppercase tracking-widest text-zinc-700 border-r border-black/10 flex items-center">DOC*</div>
                 <div className="flex-1 p-1">
                   <input 
                     type="text"
@@ -252,7 +252,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
               
               {/* DOCEXT */}
               <div className="flex border-b border-black/10">
-                <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">DOCEXT</div>
+                <div className="w-24 p-2 bg-black/5 text-[9px] font-bold uppercase tracking-widest text-zinc-700 border-r border-black/10 flex items-center">DOCEXT</div>
                 <div className="flex-1 p-1">
                   <input 
                     type="text"
@@ -267,7 +267,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
               
               {/* FECHA */}
               <div className="flex border-b border-black/10">
-                <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">FECHA*</div>
+                <div className="w-24 p-2 bg-black/5 text-[9px] font-bold uppercase tracking-widest text-zinc-700 border-r border-black/10 flex items-center">FECHA*</div>
                 <div className="flex-1 p-1">
                   <input 
                     type="text"
@@ -289,7 +289,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
               
               {/* FECHA VTO */}
               <div className="flex border-b border-black/10">
-                <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">FECHA VTO</div>
+                <div className="w-24 p-2 bg-black/5 text-[9px] font-bold uppercase tracking-widest text-zinc-700 border-r border-black/10 flex items-center">FECHA VTO</div>
                 <div className="flex-1 p-1">
                   <input 
                     type="text"
@@ -314,7 +314,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
 
         {/* Middle Section - Concept */}
         <div className="flex-1 border border-black flex flex-col">
-          <div className="flex bg-black/5 border-b border-black text-[10px] font-bold uppercase tracking-widest">
+          <div className="flex bg-black/5 border-b border-black text-[9px] font-bold uppercase tracking-widest text-zinc-700">
             <div className="flex-1 p-3 border-r border-black">Concepto*</div>
             <div className="w-24 p-3 border-r border-black text-center">Cant.</div>
             <div className="w-32 p-3 text-right">Importe*</div>
