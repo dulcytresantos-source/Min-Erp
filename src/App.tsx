@@ -424,6 +424,8 @@ export default function App() {
   } | null>(null);
   const [envStatus, setEnvStatus] = useState<any>(null);
   const [isRefreshingDb, setIsRefreshingDb] = useState(false);
+  const [tsvExportData, setTsvExportData] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
 
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
@@ -744,11 +746,8 @@ export default function App() {
 
     const tsv = [headers, ...rows].join('\n');
     
-    console.log("--- INICIO EXPORTACIÓN TSV ---");
-    console.log(tsv);
-    console.log("--- FIN EXPORTACIÓN TSV ---");
-    
-    alert("Datos exportados a la consola (F12). Copia y pega en Excel.");
+    setTsvExportData(tsv);
+    setIsCopied(false);
   };
 
   useEffect(() => {
@@ -3885,6 +3884,65 @@ export default function App() {
               )}
             </div>
           </motion.div>
+        )}
+
+        {/* TSV EXPORT MODAL */}
+        {tsvExportData && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-2xl rounded-sm shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="p-4 border-b border-[#0A0A0A]/5 flex justify-between items-center bg-[#F5F5F4]">
+                <div className="flex items-center gap-2">
+                  <Download size={16} className="text-[#0A0A0A]" />
+                  <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]">Exportación TSV (Excel)</h3>
+                </div>
+                <button 
+                  onClick={() => setTsvExportData(null)}
+                  className="text-[#0A0A0A]/40 hover:text-[#0A0A0A] transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              
+              <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
+                <p className="text-[10px] text-[#0A0A0A]/60 font-medium uppercase tracking-tight">
+                  Copia el contenido de abajo y pégalo directamente en una celda de Excel o Google Sheets.
+                </p>
+                
+                <div className="flex-1 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/10 overflow-hidden flex flex-col">
+                  <textarea 
+                    readOnly
+                    value={tsvExportData}
+                    className="flex-1 p-4 font-mono text-[10px] bg-transparent outline-none resize-none selection:bg-[#0A0A0A] selection:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-[#F5F5F4] border-t border-[#0A0A0A]/5 flex justify-end gap-3">
+                <button 
+                  onClick={() => setTsvExportData(null)}
+                  className="px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-[#0A0A0A]/40 hover:text-[#0A0A0A] transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(tsvExportData);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }}
+                  className="px-8 py-2 bg-[#0A0A0A] text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all flex items-center gap-2"
+                >
+                  {isCopied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                  {isCopied ? "¡Copiado!" : "Copiar al Portapapeles"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
