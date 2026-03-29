@@ -714,6 +714,43 @@ export default function App() {
     }
   }, [activeCompanyId]);
 
+  const exportHistoryToTSV = () => {
+    if (filteredAndSortedInvoices.length === 0) {
+      alert("No hay datos para exportar");
+      return;
+    }
+
+    // Define columns to export (excluding 'actions')
+    const colsToExport = historyColumns.filter(col => col.id !== 'actions');
+    
+    // Headers
+    const headers = colsToExport.map(col => col.label).join('\t');
+    
+    // Rows
+    const rows = filteredAndSortedInvoices.map(inv => {
+      return colsToExport.map(col => {
+        switch (col.id) {
+          case 'doc_id': return inv.doc_id || "";
+          case 'doc_ext': return inv.doc_ext || "";
+          case 'supplier_name': return inv.supplier_name || "";
+          case 'issue_date': return formatDate(inv.issue_date);
+          case 'concept': return inv.concept || "";
+          case 'total_amount': return inv.total_amount?.toString().replace('.', ',') || "0";
+          case 'status': return inv.status || "";
+          default: return "";
+        }
+      }).join('\t');
+    });
+
+    const tsv = [headers, ...rows].join('\n');
+    
+    console.log("--- INICIO EXPORTACIÓN TSV ---");
+    console.log(tsv);
+    console.log("--- FIN EXPORTACIÓN TSV ---");
+    
+    alert("Datos exportados a la consola (F12). Copia y pega en Excel.");
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -2943,6 +2980,13 @@ export default function App() {
                   >
                     <Filter size={14} />
                     Filtrar
+                  </button>
+                  <button 
+                    onClick={exportHistoryToTSV}
+                    className="px-6 py-2 bg-white border border-[#0A0A0A]/10 text-[#0A0A0A] rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#F5F5F4] transition-all flex items-center gap-2"
+                  >
+                    <Download size={14} />
+                    Exportar TSV
                   </button>
                 </div>
               </div>
