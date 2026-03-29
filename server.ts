@@ -220,68 +220,103 @@ async function initDb() {
     console.log(`Initializing database schema (${getMaskedUrl()})...`);
     dbInitError = null;
     
-    console.log("[INIT] create tables & indexes batch");
-    // Group all schema operations into a single batch to avoid multiple network roundtrips
-    await db.batch([
-      // 1. Tables
-      `CREATE TABLE IF NOT EXISTS companies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        address TEXT,
-        cif TEXT,
-        is_default INTEGER DEFAULT 0
-      )`,
-      `CREATE TABLE IF NOT EXISTS suppliers (
-        id TEXT PRIMARY KEY,
-        company_id INTEGER,
-        name TEXT NOT NULL,
-        cif TEXT NOT NULL,
-        alias TEXT,
-        name2 TEXT,
-        address TEXT,
-        address2 TEXT,
-        zip_code TEXT,
-        city TEXT,
-        province TEXT,
-        country_code TEXT,
-        phone TEXT,
-        email TEXT,
-        main_contact TEXT,
-        is_generic INTEGER DEFAULT 0,
-        FOREIGN KEY (company_id) REFERENCES companies (id)
-      )`,
-      `CREATE TABLE IF NOT EXISTS invoices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER,
-        supplier_id TEXT NOT NULL,
-        doc_id TEXT,
-        doc_ext TEXT,
-        invoice_number TEXT,
-        issue_date TEXT,
-        due_date TEXT,
-        tax_base REAL DEFAULT 0,
-        vat REAL DEFAULT 0,
-        total_amount REAL NOT NULL,
-        status TEXT DEFAULT 'Pending',
-        concept TEXT,
-        FOREIGN KEY (company_id) REFERENCES companies (id),
-        FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-      )`,
-      `CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_id INTEGER NOT NULL,
-        payment_date TEXT,
-        amount_paid REAL NOT NULL,
-        method TEXT,
-        bank_movement_id TEXT,
-        FOREIGN KEY (invoice_id) REFERENCES invoices (id)
-      )`,
-      // 2. Indexes
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique ON invoices (company_id, supplier_id, doc_ext)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_num ON invoices (company_id, supplier_id, invoice_number)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)`
-    ], "write");
+    console.log("[INIT] create tables individually");
+    
+    const tables = [
+      {
+        name: 'companies',
+        sql: `CREATE TABLE IF NOT EXISTS companies (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          address TEXT,
+          cif TEXT,
+          is_default INTEGER DEFAULT 0
+        )`
+      },
+      {
+        name: 'suppliers',
+        sql: `CREATE TABLE IF NOT EXISTS suppliers (
+          id TEXT PRIMARY KEY,
+          company_id INTEGER,
+          name TEXT NOT NULL,
+          cif TEXT NOT NULL,
+          alias TEXT,
+          name2 TEXT,
+          address TEXT,
+          address2 TEXT,
+          zip_code TEXT,
+          city TEXT,
+          province TEXT,
+          country_code TEXT,
+          phone TEXT,
+          email TEXT,
+          main_contact TEXT,
+          is_generic INTEGER DEFAULT 0,
+          FOREIGN KEY (company_id) REFERENCES companies (id)
+        )`
+      },
+      {
+        name: 'invoices',
+        sql: `CREATE TABLE IF NOT EXISTS invoices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER,
+          supplier_id TEXT NOT NULL,
+          doc_id TEXT,
+          doc_ext TEXT,
+          invoice_number TEXT,
+          issue_date TEXT,
+          due_date TEXT,
+          tax_base REAL DEFAULT 0,
+          vat REAL DEFAULT 0,
+          total_amount REAL NOT NULL,
+          status TEXT DEFAULT 'Pending',
+          concept TEXT,
+          FOREIGN KEY (company_id) REFERENCES companies (id),
+          FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )`
+      },
+      {
+        name: 'payments',
+        sql: `CREATE TABLE IF NOT EXISTS payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_id INTEGER NOT NULL,
+          payment_date TEXT,
+          amount_paid REAL NOT NULL,
+          method TEXT,
+          bank_movement_id TEXT,
+          FOREIGN KEY (invoice_id) REFERENCES invoices (id)
+        )`
+      }
+    ];
+
+    for (const table of tables) {
+      try {
+        await db.execute(table.sql);
+        console.log(`[INIT] Table ${table.name} checked/created`);
+      } catch (e) {
+        console.error(`[INIT] Error creating table ${table.name}:`, e);
+      }
+    }
+
+    // Individual migrations for existing tables
+    console.log("[INIT] checking for missing columns...");
+    // No extra columns needed for now as they are calculated on the fly
+
+    console.log("[INIT] creating indexes...");
+    const indexes = [
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique ON invoices (company_id, supplier_id, doc_ext)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_num ON invoices (company_id, supplier_id, invoice_number)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)"
+    ];
+
+    for (const idx of indexes) {
+      try {
+        await db.execute(idx);
+      } catch (e) {
+        console.warn("[INIT] Index creation failed (might already exist):", e);
+      }
+    }
 
     console.log("[INIT] check default company");
     // Check if we need a default company (Single query)
@@ -810,6 +845,7 @@ app.post("/api/invoices", async (req, res) => {
         concept ?? "Factura genérica"
       ],
     });
+
     res.json({ id: Number(result.lastInsertRowid) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

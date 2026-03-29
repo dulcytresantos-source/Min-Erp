@@ -61,6 +61,7 @@ import { twMerge } from "tailwind-merge";
 import { format } from "date-fns";
 import { parseInvoice } from "./lib/gemini";
 import InvoiceDocument from "./components/InvoiceDocument";
+import ManualInvoiceForm from "./components/ManualInvoiceForm";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -411,6 +412,7 @@ export default function App() {
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isEditingSupplier, setIsEditingSupplier] = useState(false);
+  const [isCreatingManualInvoice, setIsCreatingManualInvoice] = useState(false);
   const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState<Supplier | null>(null);
   const [dbStatus, setDbStatus] = useState<{
@@ -1995,6 +1997,22 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 p-8 overflow-y-auto">
         <AnimatePresence mode="wait">
+          {isCreatingManualInvoice && selectedSupplier && (
+            <div className="fixed inset-0 z-[60] bg-[#F5F5F4] overflow-y-auto p-8">
+              <ManualInvoiceForm 
+                supplier={selectedSupplier}
+                companyId={activeCompanyId!}
+                onSave={(invoiceId) => {
+                  setIsCreatingManualInvoice(false);
+                  fetchData();
+                  fetchSupplierDetails(selectedSupplier.id);
+                  setViewingInvoiceId(invoiceId);
+                }}
+                onCancel={() => setIsCreatingManualInvoice(false)}
+              />
+            </div>
+          )}
+
           {view === 'suppliers' && (
             <motion.div 
               key="suppliers"
@@ -2464,7 +2482,17 @@ export default function App() {
                   {activeTab === 'Facturación' && (
                     <div className="flex flex-col gap-6">
                       <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-bold uppercase tracking-widest opacity-60">Facturas Pendientes</h3>
+                        <div className="flex items-center gap-4">
+                          <h3 className="text-sm font-bold uppercase tracking-widest opacity-60">Facturas Pendientes</h3>
+                          <button 
+                            onClick={() => setIsCreatingManualInvoice(true)}
+                            className="p-1.5 bg-emerald-50 text-emerald-600 rounded-sm hover:bg-emerald-100 transition-all border border-emerald-100 flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest"
+                            title="Alta Manual de Factura"
+                          >
+                            <Plus size={12} />
+                            Nueva Factura
+                          </button>
+                        </div>
                         {selectedInvoicesForBatch.length > 0 && (
                           <button 
                             onClick={() => {
