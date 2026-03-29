@@ -31,7 +31,10 @@ import {
   Copy,
   GripVertical,
   MoveHorizontal,
-  FileText
+  FileText,
+  Lock,
+  Unlock,
+  Save
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -407,6 +410,7 @@ export default function App() {
   const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [isEditingSupplier, setIsEditingSupplier] = useState(false);
   const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState<Supplier | null>(null);
   const [dbStatus, setDbStatus] = useState<{
@@ -1185,8 +1189,39 @@ export default function App() {
     }
   };
 
+  const handleUpdateSupplier = async () => {
+    if (!selectedSupplier || !activeCompanyId) return;
+    
+    if (!selectedSupplier.name || !selectedSupplier.cif) {
+      alert("El nombre y el CIF son obligatorios");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/suppliers/${selectedSupplier.id}?companyId=${activeCompanyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selectedSupplier)
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al actualizar el proveedor");
+        return;
+      }
+
+      // Refresh list
+      await fetchData();
+      setIsEditingSupplier(false);
+      logDebug("info", "Proveedor actualizado correctamente");
+    } catch (err) {
+      console.error("Error updating supplier:", err);
+      alert("Error al actualizar el proveedor");
+    }
+  };
+
   const handleToggleGeneric = async (supplierId: string, currentValue: boolean) => {
-    if (isCreatingSupplier && selectedSupplier) {
+    if ((isCreatingSupplier || isEditingSupplier) && selectedSupplier) {
       setSelectedSupplier({ ...selectedSupplier, is_generic: !currentValue ? 1 : 0 });
       return;
     }
@@ -2108,6 +2143,38 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {!isCreatingSupplier && (
+                    <button 
+                      onClick={() => {
+                        if (isEditingSupplier) {
+                          handleUpdateSupplier();
+                        } else {
+                          setIsEditingSupplier(true);
+                        }
+                      }}
+                      className={cn(
+                        "px-4 py-2 rounded-sm font-bold uppercase tracking-widest transition-all flex items-center gap-2",
+                        isEditingSupplier 
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20" 
+                          : "bg-white border border-[#0A0A0A]/10 text-[#0A0A0A]/60 hover:bg-[#F5F5F4]"
+                      )}
+                    >
+                      {isEditingSupplier ? <Save size={16} /> : <Unlock size={16} />}
+                      {isEditingSupplier ? "Guardar Cambios" : "Editar Ficha"}
+                    </button>
+                  )}
+                  {isEditingSupplier && (
+                    <button 
+                      onClick={() => {
+                        setIsEditingSupplier(false);
+                        fetchSupplierDetails(selectedSupplier.id); // Reset data
+                      }}
+                      className="px-4 py-2 bg-[#F5F5F4] text-[#0A0A0A]/60 rounded-sm font-bold uppercase tracking-widest hover:bg-[#E4E3E0] transition-all flex items-center gap-2"
+                    >
+                      <X size={16} />
+                      Cancelar
+                    </button>
+                  )}
                   {isCreatingSupplier && (
                     <>
                       <button 
@@ -2190,48 +2257,48 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre. . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
-                            value={isCreatingSupplier ? selectedSupplier.name : toTitleCase(selectedSupplier.name)} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, name: e.target.value})}
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
+                            value={isCreatingSupplier || isEditingSupplier ? selectedSupplier.name : toTitleCase(selectedSupplier.name)} 
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, name: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none font-bold text-[11px] uppercase",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre 2. . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.name2 || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, name2: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, name2: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.address} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, address: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, address: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Dirección 2 . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.address2 || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, address2: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, address2: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
@@ -2239,21 +2306,21 @@ export default function App() {
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">C.P. +Población . .</label>
                           <div className="flex gap-1">
                             <input 
-                              readOnly={!isCreatingSupplier} 
+                              readOnly={!isCreatingSupplier && !isEditingSupplier} 
                               value={selectedSupplier.zip_code || ""} 
-                              onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, zip_code: e.target.value})}
+                              onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, zip_code: e.target.value})}
                               className={cn(
                                 "w-16 px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                                isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                                (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                               )}
                             />
                             <input 
-                              readOnly={!isCreatingSupplier} 
+                              readOnly={!isCreatingSupplier && !isEditingSupplier} 
                               value={selectedSupplier.city || ""} 
-                              onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, city: e.target.value})}
+                              onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, city: e.target.value})}
                               className={cn(
                                 "flex-1 px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                                isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                                (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                               )}
                             />
                           </div>
@@ -2261,48 +2328,49 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Provincia . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.province || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, province: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, province: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">País (ISO) . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.country_code || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, country_code: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, country_code: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">CIF/NIF. . . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.cif} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, cif: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, cif: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none font-mono text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4 mt-2">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Prov. Genérico . . .</label>
                           <button 
-                            onClick={() => handleToggleGeneric(selectedSupplier.id, !!selectedSupplier.is_generic)}
+                            onClick={() => (isCreatingSupplier || isEditingSupplier) && handleToggleGeneric(selectedSupplier.id, !!selectedSupplier.is_generic)}
                             className={cn(
                               "w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all",
                               selectedSupplier.is_generic 
                                 ? "bg-violet-600 border-violet-600 text-white" 
-                                : "border-[#0A0A0A]/10 text-transparent hover:border-[#0A0A0A]/30"
+                                : "border-[#0A0A0A]/10 text-transparent hover:border-[#0A0A0A]/30",
+                              (!isCreatingSupplier && !isEditingSupplier) && "cursor-default opacity-50"
                             )}
                           >
                             <Check size={18} />
@@ -2315,12 +2383,13 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Alias . . . . . . . . . .</label>
                           <input 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier}
                             value={selectedSupplier.alias || ""} 
-                            onChange={(e) => isCreatingSupplier 
-                              ? setSelectedSupplier({...selectedSupplier, alias: e.target.value}) 
-                              : handleUpdateAlias(selectedSupplier.id, e.target.value)
-                            }
-                            className="px-2 py-1.5 bg-white border border-[#0A0A0A]/10 rounded-sm outline-none font-bold text-[11px] uppercase tracking-tight focus:ring-1 focus:ring-violet-600/20" 
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, alias: e.target.value})}
+                            className={cn(
+                              "px-2 py-1.5 rounded-sm border-none outline-none font-bold text-[11px] uppercase tracking-tight",
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                            )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
@@ -2355,36 +2424,36 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Teléfono . . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.phone || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, phone: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, phone: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Email . . . . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.email || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, email: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, email: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Contacto . . . . . . . .</label>
                           <input 
-                            readOnly={!isCreatingSupplier} 
+                            readOnly={!isCreatingSupplier && !isEditingSupplier} 
                             value={selectedSupplier.main_contact || ""} 
-                            onChange={(e) => isCreatingSupplier && setSelectedSupplier({...selectedSupplier, main_contact: e.target.value})}
+                            onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, main_contact: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none text-[11px]",
-                              isCreatingSupplier ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
+                              (isCreatingSupplier || isEditingSupplier) ? "bg-white ring-1 ring-[#0A0A0A]/10 focus:ring-violet-600/20" : "bg-[#F5F5F4]"
                             )}
                           />
                         </div>

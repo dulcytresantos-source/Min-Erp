@@ -657,7 +657,10 @@ app.get("/api/suppliers/:id", async (req, res) => {
 });
 
 app.patch("/api/suppliers/:id", async (req, res) => {
-  const { alias, is_generic } = req.body;
+  const { 
+    name, cif, email, address, city, province, zip_code, country_code, 
+    alias, phone, name2, address2, main_contact, is_generic 
+  } = req.body;
   const companyId = (req.query.companyId as string) ?? null;
   try {
     if (is_generic === 1) {
@@ -673,13 +676,17 @@ app.patch("/api/suppliers/:id", async (req, res) => {
 
     const updates = [];
     const args = [];
-    if (alias !== undefined) {
-      updates.push("alias = ?");
-      args.push(alias);
-    }
-    if (is_generic !== undefined) {
-      updates.push("is_generic = ?");
-      args.push(is_generic);
+    
+    const fields = {
+      name, cif, email, address, city, province, zip_code, country_code, 
+      alias, phone, name2, address2, main_contact, is_generic
+    };
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        updates.push(`${key} = ?`);
+        args.push(value);
+      }
     }
     
     if (updates.length > 0) {
