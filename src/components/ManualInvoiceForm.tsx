@@ -8,6 +8,7 @@ import {
   Save
 } from "lucide-react";
 import { motion } from "motion/react";
+import { cn } from "../lib/utils";
 
 interface Supplier {
   id: string;
@@ -47,26 +48,33 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
 
   const [issueDate, setIssueDate] = useState(initialDate);
   const [dueDate, setDueDate] = useState("");
+  const [issueDateInvalid, setIssueDateInvalid] = useState(false);
+  const [dueDateInvalid, setDueDateInvalid] = useState(false);
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const smartFormatDate = (value: string): string => {
+  const validateAndFormatDate = (value: string, setDate: (v: string) => void, setInvalid: (v: boolean) => void) => {
     const v = value.trim().toUpperCase();
+    if (!v) {
+      setInvalid(false);
+      return;
+    }
+
     let normalized = "";
+    const [sysYear, sysMonth, sysDay] = systemDate.split('-').map(Number);
     
     if (v === 'T') {
       normalized = systemDate;
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
       normalized = v;
     } else {
-      const [sysYear, sysMonth, sysDay] = systemDate.split('-');
       const parts = v.split(/[\/\-]/);
       
       if (parts.length === 1 && parts[0].length > 0 && parts[0].length <= 2) {
         const d = parts[0].padStart(2, '0');
-        normalized = `${sysYear}-${sysMonth}-${d}`;
+        normalized = `${sysYear}-${String(sysMonth).padStart(2, '0')}-${d}`;
       } else if (parts.length === 2) {
         const d = parts[0].padStart(2, '0');
         const m = parts[1].padStart(2, '0');
@@ -78,21 +86,23 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
         if (y.length === 2) y = `20${y}`;
         normalized = `${y}-${m}-${d}`;
       } else {
-        return value;
+        setInvalid(true);
+        return;
       }
     }
-    
-    try {
-      const date = new Date(normalized);
-      if (!isNaN(date.getTime())) {
-        const d = String(date.getDate()).padStart(2, '0');
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const y = date.getFullYear();
-        return `${d}/${m}/${y}`;
-      }
-    } catch (e) {}
-    
-    return value;
+
+    const [y, m, d] = normalized.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const isValid = dateObj.getFullYear() === y && 
+                    dateObj.getMonth() === m - 1 && 
+                    dateObj.getDate() === d;
+
+    if (isValid) {
+      setDate(`${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`);
+      setInvalid(false);
+    } else {
+      setInvalid(true);
+    }
   };
 
   const toISODate = (displayDate: string): string => {
@@ -103,6 +113,11 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
   };
 
   const handleSave = async () => {
+    if (issueDateInvalid || dueDateInvalid) {
+      setError("Por favor, corrige las fechas antes de guardar");
+      return;
+    }
+
     const isoIssueDate = toISODate(issueDate);
     const isoDueDate = toISODate(dueDate);
 
@@ -147,6 +162,23 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
       setError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const container = (e.target as HTMLElement).closest('.p-12');
+      if (!container) return;
+      
+      const focusableElements = Array.from(container.querySelectorAll('input, textarea')) as HTMLElement[];
+      const index = focusableElements.indexOf(e.target as HTMLElement);
+      
+      if (index > -1 && index < focusableElements.length - 1) {
+        focusableElements[index + 1].focus();
+      } else if (index === focusableElements.length - 1) {
+        handleSave();
+      }
     }
   };
 
@@ -211,6 +243,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
                     type="text"
                     value={docId}
                     onChange={(e) => setDocId(e.target.value.toUpperCase())}
+                    onKeyDown={handleKeyDown}
                     placeholder="Ej: 03-FC99"
                     className="w-full px-2 py-1 text-[11px] font-bold border-none outline-none focus:bg-violet-50 transition-colors"
                   />
@@ -225,6 +258,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
                     type="text"
                     value={docExt}
                     onChange={(e) => setDocExt(e.target.value)}
+                    onKeyDown={handleKeyDown}
                     placeholder="Opcional"
                     className="w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors"
                   />
@@ -238,10 +272,17 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
                   <input 
                     type="text"
                     value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
-                    onBlur={(e) => setIssueDate(smartFormatDate(e.target.value))}
+                    onChange={(e) => {
+                      setIssueDate(e.target.value);
+                      setIssueDateInvalid(false);
+                    }}
+                    onBlur={(e) => validateAndFormatDate(e.target.value, setIssueDate, setIssueDateInvalid)}
+                    onKeyDown={handleKeyDown}
                     placeholder="DD/MM/AAAA o DD"
-                    className="w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors"
+                    className={cn(
+                      "w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors",
+                      issueDateInvalid && "bg-red-50 text-red-600 focus:bg-red-50"
+                    )}
                   />
                 </div>
               </div>
@@ -253,10 +294,17 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
                   <input 
                     type="text"
                     value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    onBlur={(e) => setDueDate(smartFormatDate(e.target.value))}
+                    onChange={(e) => {
+                      setDueDate(e.target.value);
+                      setDueDateInvalid(false);
+                    }}
+                    onBlur={(e) => validateAndFormatDate(e.target.value, setDueDate, setDueDateInvalid)}
+                    onKeyDown={handleKeyDown}
                     placeholder="DD/MM/AAAA o DD"
-                    className="w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors"
+                    className={cn(
+                      "w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors",
+                      dueDateInvalid && "bg-red-50 text-red-600 focus:bg-red-50"
+                    )}
                   />
                 </div>
               </div>
@@ -276,6 +324,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
               <textarea 
                 value={concept}
                 onChange={(e) => setConcept(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Describe el concepto de la factura..."
                 className="w-full h-full bg-transparent border-none outline-none resize-none focus:bg-violet-50 transition-colors p-2"
               />
@@ -286,6 +335,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
                 type="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="0,00"
                 className="w-full text-right bg-transparent border-none outline-none focus:bg-violet-50 transition-colors p-2 text-lg"
               />
