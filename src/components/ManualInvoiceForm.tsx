@@ -23,6 +23,7 @@ interface Supplier {
 interface ManualInvoiceFormProps {
   supplier: Supplier;
   companyId: string | number;
+  systemDate: string;
   onSave: (invoiceId: number) => void;
   onCancel: () => void;
 }
@@ -34,18 +35,78 @@ const formatCurrency = (amount: number) => {
   }).format(amount) + " €";
 };
 
-export default function ManualInvoiceForm({ supplier, companyId, onSave, onCancel }: ManualInvoiceFormProps) {
+export default function ManualInvoiceForm({ supplier, companyId, systemDate, onSave, onCancel }: ManualInvoiceFormProps) {
   const [docId, setDocId] = useState("");
   const [docExt, setDocExt] = useState("");
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Initialize with system date in DD/MM/YYYY format
+  const initialDate = (() => {
+    const [y, m, d] = systemDate.split('-');
+    return `${d}/${m}/${y}`;
+  })();
+
+  const [issueDate, setIssueDate] = useState(initialDate);
   const [dueDate, setDueDate] = useState("");
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const smartFormatDate = (value: string): string => {
+    const v = value.trim().toUpperCase();
+    let normalized = "";
+    
+    if (v === 'T') {
+      normalized = systemDate;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      normalized = v;
+    } else {
+      const [sysYear, sysMonth, sysDay] = systemDate.split('-');
+      const parts = v.split(/[\/\-]/);
+      
+      if (parts.length === 1 && parts[0].length > 0 && parts[0].length <= 2) {
+        const d = parts[0].padStart(2, '0');
+        normalized = `${sysYear}-${sysMonth}-${d}`;
+      } else if (parts.length === 2) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        normalized = `${sysYear}-${m}-${d}`;
+      } else if (parts.length === 3) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        let y = parts[2];
+        if (y.length === 2) y = `20${y}`;
+        normalized = `${y}-${m}-${d}`;
+      } else {
+        return value;
+      }
+    }
+    
+    try {
+      const date = new Date(normalized);
+      if (!isNaN(date.getTime())) {
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+      }
+    } catch (e) {}
+    
+    return value;
+  };
+
+  const toISODate = (displayDate: string): string => {
+    if (!displayDate) return "";
+    const parts = displayDate.split('/');
+    if (parts.length !== 3) return displayDate;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  };
+
   const handleSave = async () => {
-    if (!docId || !issueDate || !concept || !amount) {
+    const isoIssueDate = toISODate(issueDate);
+    const isoDueDate = toISODate(dueDate);
+
+    if (!docId || !isoIssueDate || !concept || !amount) {
       setError("Por favor, rellena todos los campos obligatorios (DOC, Fecha, Concepto, Importe)");
       return;
     }
@@ -68,8 +129,8 @@ export default function ManualInvoiceForm({ supplier, companyId, onSave, onCance
           supplier_id: supplier.id,
           doc_id: docId,
           doc_ext: docExt || docId, // Use docId as external if not provided
-          issue_date: issueDate,
-          due_date: dueDate || issueDate,
+          issue_date: isoIssueDate,
+          due_date: isoDueDate || isoIssueDate,
           total_amount: totalAmount,
           concept: concept
         }),
@@ -175,9 +236,11 @@ export default function ManualInvoiceForm({ supplier, companyId, onSave, onCance
                 <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">FECHA*</div>
                 <div className="flex-1 p-1">
                   <input 
-                    type="date"
+                    type="text"
                     value={issueDate}
                     onChange={(e) => setIssueDate(e.target.value)}
+                    onBlur={(e) => setIssueDate(smartFormatDate(e.target.value))}
+                    placeholder="DD/MM/AAAA o DD"
                     className="w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors"
                   />
                 </div>
@@ -188,9 +251,11 @@ export default function ManualInvoiceForm({ supplier, companyId, onSave, onCance
                 <div className="w-24 p-2 bg-black/5 text-[10px] font-bold uppercase tracking-tight border-r border-black/10 flex items-center">FECHA VTO</div>
                 <div className="flex-1 p-1">
                   <input 
-                    type="date"
+                    type="text"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
+                    onBlur={(e) => setDueDate(smartFormatDate(e.target.value))}
+                    placeholder="DD/MM/AAAA o DD"
                     className="w-full px-2 py-1 text-[11px] font-medium border-none outline-none focus:bg-violet-50 transition-colors"
                   />
                 </div>

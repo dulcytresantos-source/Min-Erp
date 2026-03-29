@@ -2002,11 +2002,13 @@ export default function App() {
               <ManualInvoiceForm 
                 supplier={selectedSupplier}
                 companyId={activeCompanyId!}
+                systemDate={systemDate}
                 onSave={(invoiceId) => {
                   setIsCreatingManualInvoice(false);
                   fetchData();
                   fetchSupplierDetails(selectedSupplier.id);
-                  setViewingInvoiceId(invoiceId);
+                  setSelectedInvoiceId(invoiceId);
+                  setView('invoice-document');
                 }}
                 onCancel={() => setIsCreatingManualInvoice(false)}
               />
@@ -2425,6 +2427,21 @@ export default function App() {
                           </button>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Num. Facturas . . . .</label>
+                          <div className="w-12 px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] opacity-60">
+                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id).length}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Facturas Pdtes. . . .</label>
+                          <div className={cn(
+                            "w-12 px-2 py-1.5 rounded-sm text-right font-mono font-bold text-[11px]",
+                            groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0 ? "bg-rose-50 text-rose-600" : "bg-[#F5F5F4] opacity-60"
+                          )}>
+                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Bloqueado . . . . . .</label>
                           <div className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-[10px] opacity-40 italic">No bloqueado</div>
                         </div>
@@ -2604,14 +2621,30 @@ export default function App() {
               className="max-w-6xl mx-auto"
             >
               <div className="flex justify-between items-end mb-8">
-                <div>
-                  <h2 className="text-4xl font-bold tracking-tighter">Movimientos Proveedor</h2>
-                  <p className="text-xs font-bold uppercase tracking-widest opacity-40">
-                    {movementsFilterSupplierId 
-                      ? `Filtrado por: [${formatSupplierId(movementsFilterSupplierId)}] ${suppliers.find(s => s.id === movementsFilterSupplierId)?.name}` 
-                      : "Todos los movimientos registrados"}
-                  </p>
-                </div>
+                  <div>
+                    <div className="flex items-center gap-4">
+                      {movementsFilterSupplierId && (
+                        <button 
+                          onClick={() => {
+                            const supplier = suppliers.find(s => s.id === movementsFilterSupplierId);
+                            if (supplier) {
+                              setSelectedSupplier(supplier);
+                              setView('supplier-detail');
+                            }
+                          }}
+                          className="w-10 h-10 bg-white ring-1 ring-[#0A0A0A]/10 rounded-xl flex items-center justify-center hover:bg-[#F5F5F4] transition-all shadow-sm"
+                        >
+                          <ArrowLeft size={20} />
+                        </button>
+                      )}
+                      <h2 className="text-4xl font-bold tracking-tighter">Movimientos Proveedor</h2>
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40 mt-2">
+                      {movementsFilterSupplierId 
+                        ? `Filtrado por: [${formatSupplierId(movementsFilterSupplierId)}] ${suppliers.find(s => s.id === movementsFilterSupplierId)?.name}` 
+                        : "Todos los movimientos registrados"}
+                    </p>
+                  </div>
                 <div className="flex gap-3 items-end">
                   <div className="flex flex-col gap-1">
                     <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Proveedor</label>
