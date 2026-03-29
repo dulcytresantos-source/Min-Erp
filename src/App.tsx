@@ -2796,7 +2796,20 @@ export default function App() {
                               );
                               if (col.id === 'supplier_name') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
-                                  {inv.supplier_alias || inv.supplier_name}
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const supplier = suppliers.find(s => s.id === inv.supplier_id);
+                                      if (supplier) {
+                                        setSelectedSupplier(supplier);
+                                        fetchSupplierDetails(supplier.id);
+                                        setView('supplier-detail');
+                                      }
+                                    }}
+                                    className="hover:underline text-left truncate"
+                                  >
+                                    {inv.supplier_alias || inv.supplier_name}
+                                  </button>
                                 </div>
                               );
                               if (col.id === 'amount') return (
