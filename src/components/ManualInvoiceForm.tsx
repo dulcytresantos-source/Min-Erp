@@ -144,6 +144,7 @@ export default function ManualInvoiceForm({ supplier, companyId, systemDate, onS
           supplier_id: supplier.id,
           doc_id: docId,
           doc_ext: docExt || docId, // Use docId as external if not provided
+          invoice_number: docExt || docId,
           issue_date: isoIssueDate,
           due_date: isoDueDate || isoIssueDate,
           total_amount: totalAmount,
