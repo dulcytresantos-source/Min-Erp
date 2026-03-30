@@ -523,7 +523,7 @@ export default function App() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(inv => 
-        inv.invoice_number.toLowerCase().includes(q) ||
+        (inv.invoice_number || "").toLowerCase().includes(q) ||
         inv.doc_id?.toLowerCase().includes(q) ||
         inv.doc_ext?.toLowerCase().includes(q) ||
         inv.supplier_name?.toLowerCase().includes(q) ||
@@ -598,7 +598,7 @@ export default function App() {
         inv.supplier_id?.toLowerCase().includes(q) ||
         inv.supplier_name?.toLowerCase().includes(q) ||
         inv.supplier_alias?.toLowerCase().includes(q) ||
-        inv.status.toLowerCase().includes(q)
+        (inv.status || "").toLowerCase().includes(q)
       );
     }
 
@@ -1742,7 +1742,7 @@ export default function App() {
               value={systemDate}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val.toLowerCase() === 't') {
+                if (val?.toLowerCase() === 't') {
                   setSystemDate(format(new Date(), "yyyy-MM-dd"));
                 } else {
                   setSystemDate(val);
