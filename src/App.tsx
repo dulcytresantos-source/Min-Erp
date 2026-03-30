@@ -179,9 +179,20 @@ const parseSmartDate = (input: string, baseDateStr: string = format(new Date(), 
     part = part.trim().toUpperCase().replace(/\//g, '-');
     if (!part) return null;
     
-    // Year shortcut
-    if (part === 'A') {
-      return { start: `${currentYear}-01-01`, end: `${currentYear}-12-31` };
+    // Year shortcut: A (current), A25, A2025
+    if (part.startsWith('A')) {
+      const yearStr = part.slice(1);
+      let year = yearStr ? parseInt(yearStr) : currentYear;
+      if (yearStr && year < 100) year += 2000;
+      if (!isNaN(year)) {
+        return { start: `${year}-01-01`, end: `${year}-12-31` };
+      }
+    }
+
+    // Year only (4 digits)
+    if (/^\d{4}$/.test(part)) {
+      const year = parseInt(part);
+      return { start: `${year}-01-01`, end: `${year}-12-31` };
     }
 
     // Today shortcut
@@ -189,15 +200,19 @@ const parseSmartDate = (input: string, baseDateStr: string = format(new Date(), 
       return { start: baseDateStr, end: baseDateStr };
     }
     
-    // Month shortcut
+    // Month shortcut: M3, M3-25
     if (part.startsWith('M')) {
-      const monthStr = part.slice(1);
-      const month = monthStr ? parseInt(monthStr) : currentMonth;
+      const monthPart = part.slice(1);
+      const mSegments = monthPart.split('-');
+      const month = mSegments[0] ? parseInt(mSegments[0]) : currentMonth;
+      let year = mSegments[1] ? parseInt(mSegments[1]) : currentYear;
+      if (mSegments[1] && year < 100) year += 2000;
+
       if (!isNaN(month) && month >= 1 && month <= 12) {
-        const lastDay = getDaysInMonth(currentYear, month);
+        const lastDay = getDaysInMonth(year, month);
         return { 
-          start: `${currentYear}-${String(month).padStart(2, '0')}-01`, 
-          end: `${currentYear}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}` 
+          start: `${year}-${String(month).padStart(2, '0')}-01`, 
+          end: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}` 
         };
       }
     }
@@ -527,6 +542,7 @@ export default function App() {
         inv.doc_id?.toLowerCase().includes(q) ||
         inv.doc_ext?.toLowerCase().includes(q) ||
         inv.supplier_name?.toLowerCase().includes(q) ||
+        inv.supplier_alias?.toLowerCase().includes(q) ||
         inv.concept?.toLowerCase().includes(q)
       );
     }
@@ -2973,12 +2989,12 @@ export default function App() {
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Filtro Fecha (D, D-M, D-M-Y, A, M, M1..M3)</label>
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Filtro Fecha (D, D-M, D-M-Y, A25, M3-25, M1..M3)</label>
                     <div className="relative">
                       <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
                       <input 
                         type="text" 
-                        placeholder="Ej: 5, 3-2, A, M1..M3"
+                        placeholder="Ej: 5, 3-2, A25, M3-25, M1..M3"
                         value={historyDateFilter}
                         onChange={(e) => setHistoryDateFilter(e.target.value)}
                         className="pl-10 pr-4 py-2 bg-white border border-[#0A0A0A]/10 rounded-sm text-[10px] font-bold outline-none focus:border-[#0A0A0A] transition-all w-64"
