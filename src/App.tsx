@@ -1646,6 +1646,7 @@ export default function App() {
   const sortedSuppliers = useMemo(() => {
     const filtered = suppliers.filter(s => 
       (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (s.alias || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
       (s.cif || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (s.id || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
