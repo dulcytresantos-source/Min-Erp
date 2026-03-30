@@ -3416,30 +3416,32 @@ export default function App() {
         {isLiquidating && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-sm w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/10"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
             >
-              <div className="p-6 bg-[#0A0A0A] text-white flex justify-between items-center">
+              {/* Header */}
+              <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
-                    <CreditCard size={20} />
+                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                    <CreditCard size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold tracking-tight uppercase">Liquidar Factura</h3>
-                    <div className="flex gap-2 items-center">
-                      <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">DOC: {isLiquidating.doc_id}</p>
-                      <span className="w-1 h-1 bg-white/20 rounded-full" />
-                      <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">REF: {isLiquidating.invoice_number}</p>
+                    <h3 className="text-xl font-bold tracking-tight">Liquidar Factura</h3>
+                    <div className="flex gap-2 items-center opacity-70">
+                      <p className="text-[10px] uppercase tracking-widest font-bold">DOC: {isLiquidating.doc_id}</p>
+                      <span className="w-1 h-1 bg-white/40 rounded-full" />
+                      <p className="text-[10px] uppercase tracking-widest font-bold">REF: {isLiquidating.invoice_number}</p>
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setIsLiquidating(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+                <button onClick={() => setIsLiquidating(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20} /></button>
               </div>
-              <div className="p-6 flex flex-col gap-6">
-                {/* Type Selection */}
-                <div className="flex gap-4 p-1 bg-[#F5F5F4] rounded-sm">
+
+              <div className="p-8 flex flex-col gap-8">
+                {/* Type Selection Tabs */}
+                <div className="flex gap-2 p-1.5 bg-[#F5F5F4] rounded-2xl">
                   <button 
                     onClick={() => {
                       setIsMultipleLiquidation(false);
@@ -3447,46 +3449,43 @@ export default function App() {
                       setPaymentAmount((isLiquidating.total_amount - isLiquidating.paid_amount).toFixed(2));
                     }}
                     className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center justify-center gap-2",
-                      !isMultipleLiquidation ? "bg-white shadow-sm text-[#0A0A0A]" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
+                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
+                      !isMultipleLiquidation ? "bg-white shadow-sm text-blue-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
                     )}
                   >
-                    <div className={cn("w-2 h-2 rounded-full", !isMultipleLiquidation ? "bg-violet-600" : "bg-transparent border border-[#0A0A0A]/20")} />
-                    Liquidación Simple
+                    Simple
                   </button>
                   <button 
                     onClick={() => {
                       setIsMultipleLiquidation(true);
-                      // Ensure paymentAmount is correct for the current selection
                       const total = groupedInvoices.filter(i => selectedInvoicesForBatch.includes(i.id)).reduce((sum, i) => sum + i.pending, 0);
                       setPaymentAmount(total.toFixed(2));
                     }}
                     className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center justify-center gap-2",
-                      isMultipleLiquidation ? "bg-white shadow-sm text-[#0A0A0A]" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
+                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
+                      isMultipleLiquidation ? "bg-white shadow-sm text-blue-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
                     )}
                   >
-                    <div className={cn("w-2 h-2 rounded-full", isMultipleLiquidation ? "bg-violet-600" : "bg-transparent border border-[#0A0A0A]/20")} />
-                    Liquidación Múltiple
+                    Múltiple
                   </button>
                 </div>
 
                 {isMultipleLiquidation && (
                   <div className="flex flex-col gap-3">
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Seleccionar Facturas Pendientes</label>
-                    <div className="max-h-[200px] overflow-y-auto border border-[#0A0A0A]/5 rounded-sm divide-y divide-[#0A0A0A]/5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Seleccionar Facturas Pendientes</label>
+                    <div className="max-h-[180px] overflow-y-auto border border-[#0A0A0A]/5 rounded-2xl divide-y divide-[#0A0A0A]/5 bg-[#F5F5F4]/30">
                       {groupedInvoices
                         .filter(inv => inv.supplier_id === isLiquidating.supplier_id && inv.pending > 0)
                         .map(inv => (
                           <div 
                             key={inv.id} 
                             className={cn(
-                              "p-3 flex items-center justify-between cursor-pointer transition-colors",
-                              selectedInvoicesForBatch.includes(inv.id) ? "bg-violet-50/50" : "hover:bg-[#F5F5F4]"
+                              "p-4 flex items-center justify-between cursor-pointer transition-colors",
+                              selectedInvoicesForBatch.includes(inv.id) ? "bg-blue-50/50" : "hover:bg-[#F5F5F4]"
                             )}
                             onClick={() => {
                               if (selectedInvoicesForBatch.includes(inv.id)) {
-                                if (inv.id === isLiquidating.id) return; // Cannot deselect the main one
+                                if (inv.id === isLiquidating.id) return;
                                 const next = selectedInvoicesForBatch.filter(id => id !== inv.id);
                                 setSelectedInvoicesForBatch(next);
                                 const total = groupedInvoices.filter(i => next.includes(i.id)).reduce((sum, i) => sum + i.pending, 0);
@@ -3499,19 +3498,19 @@ export default function App() {
                               }
                             }}
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-4">
                               <div className={cn(
-                                "w-4 h-4 rounded-sm border flex items-center justify-center transition-colors",
-                                selectedInvoicesForBatch.includes(inv.id) ? "bg-violet-600 border-violet-600 text-white" : "border-[#0A0A0A]/10 bg-white"
+                                "w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all",
+                                selectedInvoicesForBatch.includes(inv.id) ? "bg-blue-600 border-blue-600 text-white" : "border-[#0A0A0A]/10 bg-white"
                               )}>
-                                {selectedInvoicesForBatch.includes(inv.id) && <Plus size={10} />}
+                                {selectedInvoicesForBatch.includes(inv.id) && <Check size={12} strokeWidth={3} />}
                               </div>
                               <div>
-                                <p className="text-[10px] font-bold uppercase tracking-tight">{inv.reference}</p>
+                                <p className="text-[11px] font-bold uppercase tracking-tight">{inv.reference}</p>
                                 <p className="text-[9px] opacity-40 uppercase tracking-widest font-bold">DOC: {inv.doc_id}</p>
                               </div>
                             </div>
-                            <p className="text-[10px] font-mono font-bold text-rose-600">{formatCurrency(inv.pending)}</p>
+                            <p className="text-[11px] font-mono font-bold text-rose-600">{formatCurrency(inv.pending)}</p>
                           </div>
                         ))}
                     </div>
@@ -3519,60 +3518,85 @@ export default function App() {
                 )}
 
                 {liquidationError && (
-                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-sm flex items-center gap-2 text-rose-600 text-[10px] font-bold uppercase tracking-widest">
-                    <AlertCircle size={14} />
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
+                    <AlertCircle size={16} />
                     {liquidationError}
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Importe a Pagar</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-30 text-sm">€</span>
+
+                <div className="flex flex-col gap-6">
+                  <div>
+                    <div className="flex justify-between items-end mb-2 px-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Importe a Pagar</label>
+                      {!isMultipleLiquidation && (
+                        <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest">Pendiente: {formatCurrency((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0))}</p>
+                      )}
+                    </div>
+                    <div className="relative group">
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-blue-600/30 text-2xl">€</span>
                       <input 
                         type="number" 
                         value={paymentAmount}
                         readOnly={isMultipleLiquidation}
                         onChange={(e) => setPaymentAmount(e.target.value)}
                         className={cn(
-                          "w-full pl-8 pr-4 py-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-mono font-bold text-xl focus:border-[#0A0A0A]/20 transition-all",
+                          "w-full pl-12 pr-6 py-5 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-mono font-bold text-3xl focus:border-blue-600/20 focus:bg-white transition-all",
                           isMultipleLiquidation && "opacity-60 cursor-not-allowed"
                         )}
                       />
                     </div>
+                    
                     {!isMultipleLiquidation && (
-                      <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Pendiente: {formatCurrency((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0))}</p>
-                    )}
-                    {isMultipleLiquidation && (
-                      <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Total Seleccionado: {formatCurrency(parseFloat(paymentAmount || "0"))}</p>
+                      <div className="flex gap-2 mt-3">
+                        {[10, 50, 100].map(amt => (
+                          <button 
+                            key={amt}
+                            onClick={() => setPaymentAmount((prev) => (parseFloat(prev || "0") + amt).toFixed(2))}
+                            className="flex-1 py-2 bg-[#F5F5F4] hover:bg-blue-50 hover:text-blue-600 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent hover:border-blue-600/10"
+                          >
+                            +{amt}€
+                          </button>
+                        ))}
+                        <button 
+                          onClick={() => setPaymentAmount(((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0)).toFixed(2))}
+                          className="flex-1 py-2 bg-blue-600/5 hover:bg-blue-600 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all text-blue-600 border border-blue-600/10 hover:border-transparent"
+                        >
+                          Max
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy) *</label>
-                    <input 
-                      type="text" 
-                      placeholder="DD/MM/YYYY o T"
-                      value={paymentDate}
-                      onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
-                      onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
-                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Nº Movimiento de Liquidación *</label>
-                    <input 
-                      type="text" 
-                      value={bankId}
-                      onChange={(e) => setBankId(e.target.value)}
-                      placeholder="Nº MOVIMIENTO..."
-                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all placeholder:opacity-20"
-                    />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Fecha Pago</label>
+                      <input 
+                        type="text" 
+                        placeholder="DD/MM/YYYY o T"
+                        value={paymentDate}
+                        onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
+                        onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
+                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Nº Movimiento</label>
+                      <input 
+                        type="text" 
+                        value={bankId}
+                        onChange={(e) => setBankId(e.target.value)}
+                        placeholder="MOVIMIENTO..."
+                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
+                      />
+                    </div>
                   </div>
                 </div>
+
                 <button 
                   onClick={handleLiquidate}
-                  className="w-full py-4 bg-[#0A0A0A] text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors mt-2"
+                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
                 >
+                  <Check size={18} strokeWidth={3} />
                   Confirmar Liquidación {isMultipleLiquidation ? "Múltiple" : "Simple"}
                 </button>
               </div>
@@ -3583,70 +3607,76 @@ export default function App() {
         {isBatchLiquidating && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-sm w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/10"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
             >
-              <div className="p-6 bg-[#0A0A0A] text-white flex justify-between items-center">
+              {/* Header */}
+              <div className="p-6 flex justify-between items-start">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
-                    <Layers size={20} />
+                  <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center overflow-hidden">
+                    <Layers size={28} className="text-blue-600" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold tracking-tight uppercase">Liquidación por Lotes</h3>
-                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">{selectedInvoicesForBatch.length} FACTURAS SELECCIONADAS</p>
+                    <h3 className="text-2xl font-bold tracking-tight text-[#0A0A0A]">Liquidación por Lotes</h3>
+                    <p className="text-[11px] opacity-40 uppercase tracking-widest font-bold">{selectedInvoicesForBatch.length} Facturas Seleccionadas</p>
                   </div>
                 </div>
-                <button onClick={() => setIsBatchLiquidating(false)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+                <button onClick={() => setIsBatchLiquidating(false)} className="p-2 hover:bg-[#F5F5F4] rounded-full transition-colors text-[#0A0A0A]/40 hover:text-[#0A0A0A]">
+                  <X size={20} />
+                </button>
               </div>
-              <div className="p-6 flex flex-col gap-6">
+
+              <div className="px-8 pb-8 flex flex-col gap-8">
+                {/* Amount Display */}
+                <div className="text-center py-8 bg-[#F5F5F4]/50 rounded-3xl border border-[#0A0A0A]/5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest opacity-40 block mb-2">Total a Liquidar</label>
+                  <div className="text-6xl font-bold text-[#0A0A0A] flex items-baseline justify-center">
+                    <span className="text-2xl opacity-20 mr-2">€</span>
+                    <span>{paymentAmount}</span>
+                  </div>
+                  <p className="text-[10px] text-[#0A0A0A]/40 font-medium mt-4 px-6">
+                    Se liquidará el importe pendiente de cada factura seleccionada de forma automática.
+                  </p>
+                </div>
+
                 {liquidationError && (
-                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-sm flex items-center gap-2 text-rose-600 text-[10px] font-bold uppercase tracking-widest">
-                    <AlertCircle size={14} />
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
+                    <AlertCircle size={16} />
                     {liquidationError}
                   </div>
                 )}
+
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Total a Liquidar</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-30 text-sm">€</span>
-                      <input 
-                        type="text" 
-                        readOnly
-                        value={paymentAmount}
-                        className="w-full pl-8 pr-4 py-3 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-mono font-bold text-xl opacity-60 cursor-not-allowed"
-                      />
-                    </div>
-                    <p className="text-[9px] mt-2 opacity-40 font-bold uppercase tracking-widest">Se liquidará el importe pendiente de cada factura seleccionada.</p>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Fecha de Pago (T para hoy) *</label>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Fecha Pago</label>
                     <input 
                       type="text" 
                       placeholder="DD/MM/YYYY o T"
                       value={paymentDate}
                       onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
                       onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
-                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all"
+                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
                     />
                   </div>
-                  <div>
-                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40 mb-1 block">Nº Movimiento de Liquidación *</label>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Nº Movimiento</label>
                     <input 
                       type="text" 
                       value={bankId}
                       onChange={(e) => setBankId(e.target.value)}
-                      placeholder="Nº MOVIMIENTO..."
-                      className="w-full px-3 py-2 bg-[#F5F5F4] rounded-sm border border-[#0A0A0A]/5 outline-none font-bold text-[11px] uppercase focus:border-[#0A0A0A]/20 transition-all placeholder:opacity-20"
+                      placeholder="MOVIMIENTO..."
+                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
                     />
                   </div>
                 </div>
+
                 <button 
                   onClick={handleBatchLiquidate}
-                  className="w-full py-4 bg-[#0A0A0A] text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors mt-2"
+                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
                 >
+                  <Check size={18} strokeWidth={3} />
                   Confirmar Liquidación por Lotes
                 </button>
               </div>
@@ -3657,41 +3687,41 @@ export default function App() {
         {isDeletingPayment && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-red-500/10"
             >
               <div className="p-6 bg-red-600 text-white flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
-                    <Trash2 size={20} />
+                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                    <Trash2 size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Liquidación</h3>
-                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Esta acción no se puede deshacer</p>
+                    <h3 className="text-xl font-bold tracking-tight">Eliminar Liquidación</h3>
+                    <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Acción irreversible</p>
                   </div>
                 </div>
-                <button onClick={() => setIsDeletingPayment(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+                <button onClick={() => setIsDeletingPayment(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20} /></button>
               </div>
-              <div className="p-8 flex flex-col items-center text-center gap-6">
-                <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-600">
-                  <AlertCircle size={40} />
+              <div className="p-10 flex flex-col items-center text-center gap-8">
+                <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                  <AlertCircle size={48} strokeWidth={1.5} />
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar esta liquidación?</p>
-                  <p className="text-xs opacity-40 mt-2">El importe se restará del total pagado de la factura.</p>
+                <div className="space-y-2">
+                  <p className="text-lg font-bold text-[#0A0A0A]">¿Estás seguro de eliminar esta liquidación?</p>
+                  <p className="text-sm opacity-40 leading-relaxed">El importe se restará del total pagado de la factura y volverá a estar pendiente.</p>
                 </div>
-                <div className="flex gap-3 w-full">
+                <div className="flex gap-4 w-full">
                   <button 
                     onClick={() => setIsDeletingPayment(null)}
-                    className="flex-1 py-4 bg-[#F5F5F4] rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-[#E4E3E0] transition-colors"
+                    className="flex-1 py-4 bg-[#F5F5F4] rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-[#E4E3E0] transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     onClick={() => handleDeletePayment(isDeletingPayment)}
-                    className="flex-1 py-4 bg-red-600 text-white rounded-sm font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                    className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-[0.98]"
                   >
                     Eliminar
                   </button>
@@ -3704,39 +3734,42 @@ export default function App() {
         {isDeletingSupplier && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-sm w-full max-w-md shadow-2xl overflow-hidden border border-red-500/20"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-red-500/10"
             >
               <div className="p-6 bg-red-600 text-white flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-sm flex items-center justify-center">
-                    <Trash2 size={20} />
+                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                    <Trash2 size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold tracking-tight uppercase">Eliminar Proveedor</h3>
+                    <h3 className="text-xl font-bold tracking-tight">Eliminar Proveedor</h3>
                     <p className="text-[10px] opacity-60 uppercase tracking-widest font-bold">Acción Irreversible</p>
                   </div>
                 </div>
-                <button onClick={() => setIsDeletingSupplier(null)} className="opacity-40 hover:opacity-100 transition-opacity"><X size={20} /></button>
+                <button onClick={() => setIsDeletingSupplier(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20} /></button>
               </div>
-              <div className="p-8 flex flex-col gap-6 text-center">
-                <div className="space-y-2">
-                  <p className="text-sm font-bold text-[#0A0A0A]">¿Estás seguro de que deseas eliminar al proveedor <span className="underline">{isDeletingSupplier.name}</span>?</p>
-                  <p className="text-[10px] opacity-50 font-medium leading-relaxed uppercase tracking-tight">Solo podrás eliminarlo si no tiene facturas asociadas. Esta acción no se puede deshacer.</p>
+              <div className="p-10 flex flex-col gap-8 text-center">
+                <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center text-red-600 mx-auto">
+                  <AlertCircle size={48} strokeWidth={1.5} />
+                </div>
+                <div className="space-y-3">
+                  <p className="text-lg font-bold text-[#0A0A0A]">¿Estás seguro de eliminar al proveedor <span className="text-red-600 underline decoration-red-600/30">{isDeletingSupplier.name}</span>?</p>
+                  <p className="text-sm opacity-40 leading-relaxed">Solo podrás eliminarlo si no tiene facturas asociadas. Esta acción no se puede deshacer.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <button 
                     onClick={() => setIsDeletingSupplier(null)}
-                    className="py-3 bg-[#F5F5F4] text-[#0A0A0A] rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-[#E5E5E4] transition-colors"
+                    className="py-4 bg-[#F5F5F4] text-[#0A0A0A] rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-[#E5E5E4] transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     onClick={() => handleDeleteSupplier(isDeletingSupplier.id)}
-                    className="py-3 bg-red-600 text-white rounded-sm font-bold text-[10px] uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                    className="py-4 bg-red-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-[0.98]"
                   >
                     Eliminar
                   </button>
