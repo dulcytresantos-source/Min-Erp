@@ -549,11 +549,11 @@ export default function App() {
     return result;
   }, [allInvoices, invoiceSortField, invoiceSortDirection, searchQuery, historySupplierFilter, historyDateFilter, systemDate]);
 
-  const groupedInvoices = useMemo(() => {
+  const allGroupedInvoices = useMemo(() => {
     const invoices = movements.filter(m => m.type === 'Alta Factura');
     const allPayments = movements.filter(m => m.type === 'Liq Factura');
 
-    let result = invoices.map(inv => {
+    return invoices.map(inv => {
       const invPayments = allPayments.filter(p => p.doc_id === inv.doc_id);
       const totalPaid = invPayments.reduce((sum, p) => sum + p.amount, 0);
       const pending = Math.round((inv.amount - totalPaid) * 100) / 100;
@@ -565,6 +565,10 @@ export default function App() {
         payments: invPayments
       };
     });
+  }, [movements]);
+
+  const groupedInvoices = useMemo(() => {
+    let result = [...allGroupedInvoices];
 
     // Filter by Supplier
     if (movementsFilterSupplierId) {
@@ -616,7 +620,7 @@ export default function App() {
     }
 
     return result;
-  }, [movements, movementsFilterSupplierId, movementDateFilter, systemDate, searchQuery, movementSortField, movementSortDirection]);
+  }, [allGroupedInvoices, movementsFilterSupplierId, movementDateFilter, systemDate, searchQuery, movementSortField, movementSortDirection]);
 
   const handleMovementSort = (field: string) => {
     if (movementSortField === field) {
@@ -1625,9 +1629,9 @@ export default function App() {
 
   const sortedSuppliers = useMemo(() => {
     const filtered = suppliers.filter(s => 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      s.cif.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase())
+      (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (s.cif || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.id || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return [...filtered].sort((a, b) => {
@@ -2468,16 +2472,16 @@ export default function App() {
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Num. Facturas . . . .</label>
                           <div className="w-12 px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-right font-mono font-bold text-[11px] opacity-60">
-                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id).length}
+                            {allGroupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id).length}
                           </div>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Facturas Pdtes. . . .</label>
                           <div className={cn(
                             "w-12 px-2 py-1.5 rounded-sm text-right font-mono font-bold text-[11px]",
-                            groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0 ? "bg-rose-50 text-rose-600" : "bg-[#F5F5F4] opacity-60"
+                            allGroupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length > 0 ? "bg-rose-50 text-rose-600" : "bg-[#F5F5F4] opacity-60"
                           )}>
-                            {groupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length}
+                            {allGroupedInvoices.filter(inv => inv.supplier_id === selectedSupplier.id && inv.pending > 0).length}
                           </div>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
