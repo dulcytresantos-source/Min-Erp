@@ -828,6 +828,7 @@ export default function App() {
 
   const fetchSupplierDetails = async (id: string) => {
     if (!activeCompanyId) return;
+    setMovementsFilterSupplierId(id);
     try {
       const res = await fetch(`/api/suppliers/${id}?companyId=${activeCompanyId}`);
       const data = await res.json();
@@ -2127,6 +2128,7 @@ export default function App() {
                       onClick={() => {
                         setSelectedSupplier(s);
                         setIsCreatingSupplier(false);
+                        setMovementsFilterSupplierId(s.id);
                         fetchSupplierDetails(s.id);
                         setView('supplier-detail');
                         setActiveTab('General');
@@ -2804,6 +2806,7 @@ export default function App() {
                                       const supplier = suppliers.find(s => s.id === inv.supplier_id);
                                       if (supplier) {
                                         setSelectedSupplier(supplier);
+                                        setMovementsFilterSupplierId(supplier.id);
                                         fetchSupplierDetails(supplier.id);
                                         setView('supplier-detail');
                                       }
