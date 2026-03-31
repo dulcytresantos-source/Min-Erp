@@ -686,6 +686,10 @@ export default function App() {
     return result;
   }, [allInvoices, invoiceSortField, invoiceSortDirection, searchQuery, historySupplierFilter, historyDateFilter, systemDate]);
 
+  const totalTaxBase = useMemo(() => {
+    return filteredAndSortedInvoices.reduce((sum, inv) => sum + (inv.tax_base || 0), 0);
+  }, [filteredAndSortedInvoices]);
+
   const allGroupedInvoices = useMemo(() => {
     const invoices = movements.filter(m => m.type === 'Alta Factura');
     const allPayments = movements.filter(m => m.type === 'Liq Factura');
@@ -3151,8 +3155,9 @@ export default function App() {
               </div>
 
               <div className="flex justify-end mb-2 px-1">
-                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
-                  {filteredAndSortedInvoices.length} registros encontrados
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30 flex items-center gap-2">
+                  <span>{filteredAndSortedInvoices.length} registros encontrados</span>
+                  <span className="text-[#0A0A0A] opacity-60">({formatCurrency(totalTaxBase)})</span>
                 </div>
               </div>
 
