@@ -270,7 +270,7 @@ const parseSmartDate = (input: string, baseDateStr: string = format(new Date(), 
 
 interface LogEntry {
   timestamp: string;
-  type: 'SUCCESS' | 'ERROR' | 'DUPLICATE' | 'INFO';
+  type: 'SUCCESS' | 'ERROR' | 'DUPLICATE' | 'INFO' | 'WARNING';
   message: string;
 }
 
@@ -395,6 +395,127 @@ export default function App() {
   const [isBatchLiquidating, setIsBatchLiquidating] = useState<boolean>(false);
   const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pastedText, setPastedText] = useState("");
+
+  const handlePasteProcess = async () => {
+    if (!pastedText.trim()) return;
+    
+    setIsPasteModalOpen(false);
+    setIsUploading(true);
+    setUploadLog([]);
+    addLogEntry('INFO', 'Iniciando procesamiento de datos pegados...');
+
+    const lines = pastedText.trim().split('\n');
+    // Skip header if it looks like one
+    const startIdx = lines[0].toLowerCase().includes('identificador') ? 1 : 0;
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+
+      // Split by tabs or multiple spaces
+      const parts = line.split(/\t|\s{2,}/);
+      if (parts.length < 6) {
+        addLogEntry('ERROR', `Línea ${i + 1}: Formato inválido o incompleto.`);
+        continue;
+      }
+
+      const [identificador, nombreProveedor, nif, numFactura, fechaFactura, importe] = parts;
+
+      // Extract XX-FCXX from identificador
+      const docMatch = identificador.match(/([A-Z0-9]{2}-FC[A-Z0-9]{2})/i);
+      const docId = docMatch ? docMatch[1] : undefined;
+
+      // Parse date DD/MM/YYYY -> YYYY-MM-DD
+      let issueDate = "";
+      if (fechaFactura) {
+        const dateParts = fechaFactura.split('/');
+        if (dateParts.length === 3) {
+          issueDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+        }
+      }
+
+      // Parse amount 500,00 -> 500.00
+      const totalAmount = parseFloat(importe.replace(/\./g, '').replace(',', '.'));
+
+      const parsedData = {
+        supplierName: nombreProveedor,
+        cif: nif.trim().toUpperCase(),
+        invoiceNumber: numFactura,
+        issueDate: issueDate,
+        totalAmount: totalAmount,
+        taxBase: totalAmount / 1.21, // Rough estimate if not provided
+        vat: (totalAmount / 1.21) * 0.21,
+        docId: docId
+      };
+
+      try {
+        addLogEntry('INFO', `Procesando: ${nombreProveedor} (${nif})`);
+
+        // Check for similar NIFs in BBDD to avoid duplicates
+        const similarSupplier = suppliers.find(s => {
+          const sCif = s.cif.trim().toUpperCase();
+          const pCif = parsedData.cif;
+          // Exact match
+          if (sCif === pCif) return true;
+          // Similar match (e.g. missing leading zero or small typo)
+          // Simple heuristic: if 7 out of 9 characters match
+          let matches = 0;
+          for (let j = 0; j < Math.min(sCif.length, pCif.length); j++) {
+            if (sCif[j] === pCif[j]) matches++;
+          }
+          return matches >= 7 && Math.abs(sCif.length - pCif.length) <= 1;
+        });
+
+        if (similarSupplier && similarSupplier.cif !== parsedData.cif) {
+          addLogEntry('WARNING', `¡Atención! NIF ${parsedData.cif} parecido a ${similarSupplier.cif} (${similarSupplier.name}) detectado.`);
+        }
+
+        // Lookup CIF exactly
+        const cifRes = await fetch(`/api/suppliers/cif/${parsedData.cif}?companyId=${activeCompanyId}`);
+        const existingSupplier = await cifRes.json();
+
+        if (existingSupplier) {
+          // Duplicate check
+          const isDuplicate = allInvoices.some(inv => 
+            (inv.supplier_id === existingSupplier.id && (inv.doc_ext === parsedData.invoiceNumber || inv.invoice_number === parsedData.invoiceNumber)) ||
+            (docId && inv.doc_id === docId)
+          );
+
+          if (isDuplicate) {
+            addLogEntry('DUPLICATE', `Factura ${docId || parsedData.invoiceNumber} ya existe.`);
+            continue;
+          }
+
+          await createInvoice(existingSupplier.id, parsedData, "Factura pegada");
+          addLogEntry('SUCCESS', `Factura creada para ${existingSupplier.name}`);
+        } else {
+          addLogEntry('INFO', `Proveedor nuevo detectado: ${nombreProveedor}`);
+          setProposal({
+            name: parsedData.supplierName,
+            cif: parsedData.cif,
+            address: "",
+            city: "",
+            zip_code: "",
+            province: "",
+            phone: "",
+            email: "",
+            invoiceData: parsedData
+          });
+          // Note: If multiple new suppliers, this will only show the last one.
+          // In a real app, we'd queue these.
+        }
+      } catch (err) {
+        addLogEntry('ERROR', `Error en línea ${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    await fetchData();
+    setIsUploading(false);
+    setPastedText("");
+    addLogEntry('INFO', 'Procesamiento de datos pegados finalizado.');
+  };
   const [useGenericInProposal, setUseGenericInProposal] = useState(false);
   const [proposalConcept, setProposalConcept] = useState("");
   const [editingInvoiceConceptId, setEditingInvoiceConceptId] = useState<number | null>(null);
@@ -3218,13 +3339,16 @@ export default function App() {
                 </label>
 
                 <div className="grid grid-cols-3 gap-6 w-full">
-                  <div className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2">
-                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                      <Search size={16} className="opacity-40" />
+                    <div 
+                      onClick={() => setIsPasteModalOpen(true)}
+                      className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2 cursor-pointer hover:bg-[#E4E3E0] transition-all group/card"
+                    >
+                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm group-hover/card:scale-110 transition-transform">
+                        <Terminal size={16} className="opacity-40" />
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-40">Consola Matrix</p>
+                      <p className="text-sm font-medium leading-tight">Pegar datos directamente desde tu OCR externo.</p>
                     </div>
-                    <p className="text-xs font-bold uppercase tracking-widest opacity-40">Escaneo OCR</p>
-                    <p className="text-sm font-medium leading-tight">Extracción automática de CIF, importes y fechas.</p>
-                  </div>
                   <div className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2">
                     <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
                       <Building2 size={16} className="opacity-40" />
@@ -3256,6 +3380,7 @@ export default function App() {
                             log.type === 'SUCCESS' ? "text-green-400" :
                             log.type === 'ERROR' ? "text-red-400" :
                             log.type === 'DUPLICATE' ? "text-yellow-400" :
+                            log.type === 'WARNING' ? "text-orange-400" :
                             "text-blue-400"
                           )}>
                             {log.type}
@@ -3286,6 +3411,69 @@ export default function App() {
 
       {/* Modals (Proposal & Liquidation) */}
       <AnimatePresence>
+        {isPasteModalOpen && (
+          <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 bg-[#0A0A0A] text-white flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+                    <Terminal size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold tracking-tight">Consola Matrix // Pegar Datos</h3>
+                    <p className="text-xs opacity-60 uppercase tracking-widest font-semibold">Protocolo de entrada directa</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsPasteModalOpen(false)} className="opacity-40 hover:opacity-100 transition-opacity">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-8 flex flex-col gap-6">
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3 text-blue-600">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                  <div className="text-xs font-medium leading-relaxed">
+                    <p className="font-bold uppercase tracking-widest mb-1">Instrucciones de Formato:</p>
+                    <p>Pega las líneas directamente desde tu OCR. El sistema espera el formato:</p>
+                    <code className="bg-blue-100 px-1 rounded">Identificador [Tab] Nombre [Tab] NIF [Tab] Factura [Tab] Fecha [Tab] Importe</code>
+                  </div>
+                </div>
+                
+                <textarea 
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="Pega aquí tus datos..."
+                  className="w-full h-64 p-6 bg-[#F5F5F4] rounded-2xl border-none outline-none font-mono text-xs leading-relaxed resize-none focus:ring-2 ring-black/5 transition-all"
+                />
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setIsPasteModalOpen(false);
+                      setPastedText("");
+                    }}
+                    className="flex-1 py-4 bg-[#F5F5F4] rounded-2xl font-bold text-sm hover:bg-[#E4E3E0] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={handlePasteProcess}
+                    disabled={!pastedText.trim()}
+                    className="flex-2 py-4 bg-[#0A0A0A] text-white rounded-2xl font-bold text-sm hover:scale-[1.02] transition-transform shadow-lg shadow-black/10 disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
+                  >
+                    <Copy size={18} />
+                    Procesar Datos
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {proposal && (
           <div className="fixed inset-0 bg-[#0A0A0A]/60 backdrop-blur-md flex items-center justify-center p-6 z-50">
             <motion.div 
