@@ -395,7 +395,63 @@ export default function App() {
   const [selectedInvoicesForBatch, setSelectedInvoicesForBatch] = useState<number[]>([]);
   const [isBatchLiquidating, setIsBatchLiquidating] = useState<boolean>(false);
   const [isDeletingPayment, setIsDeletingPayment] = useState<number | null>(null);
+  const [similarSuppliers, setSimilarSuppliers] = useState<Supplier[]>([]);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
+
+  const findSimilarSuppliers = useCallback((name: string, cif: string) => {
+    if (!name && !cif) return [];
+    
+    const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const numericCif = cif.replace(/\D/g, '');
+
+    const found = suppliers.filter(s => {
+      // CIF Similarity
+      const sNumericCif = s.cif.replace(/\D/g, '');
+      let cifMatch = false;
+      
+      if (numericCif && sNumericCif) {
+        // Check if one is a substring of the other (at least 6 digits)
+        if (numericCif.length >= 6 && sNumericCif.length >= 6) {
+          if (numericCif.includes(sNumericCif) || sNumericCif.includes(numericCif)) {
+            cifMatch = true;
+          }
+        }
+        
+        // Or check if they share a long common sequence (e.g. 7 digits)
+        if (!cifMatch) {
+          let matches = 0;
+          const minLen = Math.min(numericCif.length, sNumericCif.length);
+          for (let i = 0; i < minLen; i++) {
+            if (numericCif[i] === sNumericCif[i]) matches++;
+          }
+          if (matches >= 7) cifMatch = true;
+        }
+      }
+
+      // Name Similarity
+      const sNormalizedName = s.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const sNormalizedAlias = (s.alias || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      const nameMatch = normalizedName.length > 3 && (
+        sNormalizedName.includes(normalizedName) || 
+        normalizedName.includes(sNormalizedName) ||
+        sNormalizedAlias.includes(normalizedName) ||
+        normalizedName.includes(sNormalizedAlias)
+      );
+
+      return cifMatch || nameMatch;
+    });
+
+    if (found.length > 0) {
+      console.log(`%c[SIMILAR SUPPLIERS DETECTED]`, 'background: #fef08a; color: #854d0e; font-weight: bold; padding: 2px 4px; border-radius: 2px;');
+      found.forEach(s => {
+        console.log(`- ${s.name} (CIF: ${s.cif}) matches ${name} (CIF: ${cif})`);
+        logDebug('info', `Similar supplier detected: ${s.name} (${s.cif}) for ${name} (${cif})`);
+      });
+    }
+
+    return found;
+  }, [suppliers]);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pastedText, setPastedText] = useState("");
 
@@ -493,6 +549,8 @@ export default function App() {
           addLogEntry('SUCCESS', `Factura creada para ${existingSupplier.name}`);
         } else {
           addLogEntry('INFO', `Proveedor nuevo detectado: ${nombreProveedor}`);
+          const similar = findSimilarSuppliers(nombreProveedor, parsedData.cif);
+          setSimilarSuppliers(similar);
           setProposal({
             name: parsedData.supplierName,
             cif: parsedData.cif,
@@ -564,6 +622,19 @@ export default function App() {
   const [tsvExportData, setTsvExportData] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
+  useEffect(() => {
+    if (!proposal) {
+      setSimilarSuppliers([]);
+    }
+  }, [proposal]);
+
+  useEffect(() => {
+    if (isCreatingSupplier && selectedSupplier) {
+      const similar = findSimilarSuppliers(selectedSupplier.name, selectedSupplier.cif);
+      setSimilarSuppliers(similar);
+    }
+  }, [isCreatingSupplier, selectedSupplier?.name, selectedSupplier?.cif, findSimilarSuppliers]);
+
   const [supplierColumns, setSupplierColumns] = useState([
     { id: 'id', label: 'Nº Prov.', width: '100px', sortKey: 'id' },
     { id: 'name', label: 'Nombre / Alias', width: '1fr', sortKey: 'name' },
@@ -577,6 +648,7 @@ export default function App() {
     { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
     { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
     { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr', sortKey: 'supplier_name' },
+    { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
     { id: 'amount', label: 'Imp. Inicial', width: '100px', sortKey: 'amount' },
     { id: 'pending', label: 'Imp. Pdte.', width: '100px', sortKey: 'pending' },
     { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
@@ -745,6 +817,7 @@ export default function App() {
         inv.supplier_id?.toLowerCase().includes(q) ||
         inv.supplier_name?.toLowerCase().includes(q) ||
         inv.supplier_alias?.toLowerCase().includes(q) ||
+        inv.concept?.toLowerCase().includes(q) ||
         (inv.status || "").toLowerCase().includes(q)
       );
     }
@@ -1172,6 +1245,8 @@ export default function App() {
           addLogEntry('INFO', `${file.name}: Proveedor nuevo detectado (${parsed.supplierName})`);
           setUseGenericInProposal(false);
           setProposalConcept("");
+          const similar = findSimilarSuppliers(parsed.supplierName, parsed.cif);
+          setSimilarSuppliers(similar);
           setProposal({
             name: parsed.supplierName,
             alias: parsed.alias,
@@ -1246,6 +1321,23 @@ export default function App() {
     if (!res.ok) {
       const errorData = await res.json();
       throw new Error(errorData.error || "Error al crear la factura");
+    }
+  };
+
+  const handleAssociateSimilarSupplier = async (supplierId: string) => {
+    if (!proposal) return;
+    setIsUploading(true);
+    try {
+      await createInvoice(supplierId, proposal.invoiceData, proposalConcept || "Factura genérica");
+      setProposal(null);
+      setSimilarSuppliers([]);
+      setUseGenericInProposal(false);
+      setProposalConcept("");
+      await fetchData();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -2443,6 +2535,25 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                       {/* Left Column */}
                       <div className="flex flex-col gap-3">
+                        {isCreatingSupplier && similarSuppliers.length > 0 && (
+                          <div className="col-span-2 p-4 bg-amber-50 border border-amber-100 rounded-sm flex flex-col gap-3 mb-4">
+                            <div className="flex items-center gap-2 text-amber-700">
+                              <AlertCircle size={18} />
+                              <h4 className="text-[10px] font-bold uppercase tracking-widest">Atención: Proveedores similares detectados</h4>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {similarSuppliers.map(s => (
+                                <div key={s.id} className="px-3 py-2 bg-white border border-amber-200 rounded-sm text-[10px]">
+                                  <span className="font-bold text-amber-900">{s.name}</span>
+                                  <span className="ml-2 text-amber-700/60 font-mono">{s.cif}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[9px] text-amber-700/60 font-medium italic">
+                              Verifica que no estés duplicando un proveedor que ya existe en el sistema.
+                            </p>
+                          </div>
+                        )}
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nº . . . . . . . . . . .</label>
                           <div className="flex gap-1">
@@ -2980,6 +3091,11 @@ export default function App() {
                                   >
                                     {inv.supplier_alias || inv.supplier_name}
                                   </button>
+                                </div>
+                              );
+                              if (col.id === 'concept') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center overflow-hidden" title={inv.concept}>
+                                  <span className="truncate">{inv.concept || "-"}</span>
                                 </div>
                               );
                               if (col.id === 'amount') return (
@@ -3525,6 +3641,36 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex flex-col gap-4">
+                  {similarSuppliers.length > 0 && !useGenericInProposal && (
+                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-amber-700">
+                        <AlertCircle size={18} />
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest">Proveedores similares detectados</h4>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {similarSuppliers.map(s => (
+                          <button
+                            key={s.id}
+                            onClick={() => handleAssociateSimilarSupplier(s.id)}
+                            className="flex items-center justify-between p-3 bg-white rounded-xl hover:bg-amber-100 transition-colors border border-amber-200 group"
+                          >
+                            <div className="text-left">
+                              <p className="text-xs font-bold text-amber-900">{s.name}</p>
+                              <p className="text-[9px] text-amber-700/60 font-mono">{s.cif}</p>
+                            </div>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="text-[9px] font-bold uppercase text-amber-700">Asociar</span>
+                              <ChevronRight size={14} className="text-amber-700" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-amber-700/60 font-medium italic">
+                        Si el proveedor ya existe, selecciónalo arriba para evitar duplicados.
+                      </p>
+                    </div>
+                  )}
+
                   {!useGenericInProposal ? (
                     <>
                       <div>
