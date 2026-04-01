@@ -647,6 +647,7 @@ export default function App() {
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
     { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
+    { id: 'supplier_id', label: 'Cód. Prov.', width: '100px', sortKey: 'supplier_id' },
     { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr', sortKey: 'supplier_name' },
     { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
     { id: 'amount', label: 'Imp. Inicial', width: '100px', sortKey: 'amount' },
@@ -658,6 +659,7 @@ export default function App() {
   const [historyColumns, setHistoryColumns] = useState([
     { id: 'doc_id', label: 'DOC (Int)', width: '140px', sortKey: 'doc_id' },
     { id: 'doc_ext', label: 'DOCEXT (Ext)', width: '120px', sortKey: 'doc_ext' },
+    { id: 'supplier_id', label: 'Cód. Prov.', width: '100px', sortKey: 'supplier_id' },
     { id: 'supplier_name', label: 'Proveedor', width: '1.5fr', sortKey: 'supplier_name' },
     { id: 'issue_date', label: 'Fecha', width: '100px', sortKey: 'issue_date' },
     { id: 'concept', label: 'Concepto', width: '1fr', sortKey: 'concept' },
@@ -3074,6 +3076,7 @@ export default function App() {
                                     </button>
                                 </div>
                               );
+                              if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{formatSupplierId(inv.supplier_id)}</div>;
                               if (col.id === 'supplier_name') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
                                   <button 
@@ -3181,6 +3184,7 @@ export default function App() {
                                           <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
                                         </div>
                                       );
+                                      if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
                                       if (col.id === 'supplier_name') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
                                           <ArrowRight size={10} className="mr-2 opacity-40" />
@@ -3346,6 +3350,7 @@ export default function App() {
                           </div>
                         );
                         if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_ext || "-"}</div>;
+                        if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{formatSupplierId(inv.supplier_id)}</div>;
                         if (col.id === 'supplier_name') return (
                           <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center">
                             <button 
