@@ -141,6 +141,7 @@ interface Movement {
   supplier_name?: string;
   supplier_alias?: string;
   supplier_id?: string;
+  concept?: string;
 }
 
 interface NewSupplierProposal {
@@ -597,6 +598,7 @@ export default function App() {
     { id: 'doc_id', label: 'DOC.', width: '100px', sortKey: 'doc_id' },
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'reference', label: 'Referencia', width: '1fr', sortKey: 'reference' },
+    { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
     { id: 'amount', label: 'Total', width: '100px', sortKey: 'amount' },
     { id: 'pending', label: 'Pendiente', width: '100px', sortKey: 'pending' },
   ]);
@@ -2786,6 +2788,11 @@ export default function App() {
                                   if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-mono flex items-center">{inv.doc_id}</div>;
                                   if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
                                   if (col.id === 'reference') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold flex items-center">{inv.reference}</div>;
+                                  if (col.id === 'concept') return (
+                                    <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center overflow-hidden" title={inv.concept}>
+                                      <span className="truncate">{inv.concept || "-"}</span>
+                                    </div>
+                                  );
                                   if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono flex items-center justify-end">{formatCurrency(inv.amount)}</div>;
                                   if (col.id === 'pending') return <div key={col.id} className="p-1 text-[10px] text-right font-mono text-rose-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
                                   return null;

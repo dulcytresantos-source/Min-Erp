@@ -742,7 +742,7 @@ app.get("/api/movements/all", async (req, res) => {
   try {
     const invoices = await db.execute({
       sql: `
-        SELECT i.id, i.doc_id, i.doc_ext, i.invoice_number as reference, i.issue_date as date, i.total_amount as amount, 'Alta Factura' as type, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id
+        SELECT i.id, i.doc_id, i.doc_ext, i.invoice_number as reference, i.issue_date as date, i.total_amount as amount, 'Alta Factura' as type, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id, i.concept
         FROM invoices i
         JOIN suppliers s ON i.supplier_id = s.id
         WHERE i.company_id = ?
@@ -751,7 +751,7 @@ app.get("/api/movements/all", async (req, res) => {
     });
     const payments = await db.execute({
       sql: `
-        SELECT p.id, i.doc_id, i.doc_ext, i.invoice_number as reference, p.payment_date as date, p.amount_paid as amount, 'Liq Factura' as type, p.bank_movement_id, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id
+        SELECT p.id, i.doc_id, i.doc_ext, i.invoice_number as reference, p.payment_date as date, p.amount_paid as amount, 'Liq Factura' as type, p.bank_movement_id, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id, i.concept
         FROM payments p
         JOIN invoices i ON p.invoice_id = i.id
         JOIN suppliers s ON i.supplier_id = s.id
@@ -776,7 +776,7 @@ app.get("/api/suppliers/:id/movements", async (req, res) => {
     const invoices = await db.execute({
       sql: `
         SELECT i.id, i.doc_id, i.doc_ext, i.invoice_number as reference, i.issue_date as date, i.total_amount as amount, 'Alta Factura' as type, 
-               s.name as supplier_name, s.alias as supplier_alias, i.supplier_id
+               s.name as supplier_name, s.alias as supplier_alias, i.supplier_id, i.concept
         FROM invoices i
         JOIN suppliers s ON i.supplier_id = s.id
         WHERE i.supplier_id = ? AND i.company_id = ?
@@ -786,7 +786,7 @@ app.get("/api/suppliers/:id/movements", async (req, res) => {
     const payments = await db.execute({
       sql: `
         SELECT p.id, i.doc_id, i.doc_ext, i.invoice_number as reference, p.payment_date as date, p.amount_paid as amount, 'Liq Factura' as type, 
-               p.bank_movement_id, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id
+               p.bank_movement_id, s.name as supplier_name, s.alias as supplier_alias, i.supplier_id, i.concept
         FROM payments p
         JOIN invoices i ON p.invoice_id = i.id
         JOIN suppliers s ON i.supplier_id = s.id
