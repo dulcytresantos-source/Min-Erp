@@ -445,8 +445,8 @@ export default function App() {
         invoiceNumber: numFactura,
         issueDate: issueDate,
         totalAmount: totalAmount,
-        taxBase: totalAmount / 1.21, // Rough estimate if not provided
-        vat: (totalAmount / 1.21) * 0.21,
+        taxBase: totalAmount, // No longer assuming 21% VAT
+        vat: 0,
         docId: docId
       };
 
@@ -686,8 +686,12 @@ export default function App() {
     return result;
   }, [allInvoices, invoiceSortField, invoiceSortDirection, searchQuery, historySupplierFilter, historyDateFilter, systemDate]);
 
-  const totalTaxBase = useMemo(() => {
-    return filteredAndSortedInvoices.reduce((sum, inv) => sum + (inv.tax_base || 0), 0);
+  const invoiceTotals = useMemo(() => {
+    return filteredAndSortedInvoices.reduce((acc, inv) => {
+      acc.total += (inv.total_amount || 0);
+      acc.base += (inv.tax_base || 0);
+      return acc;
+    }, { total: 0, base: 0 });
   }, [filteredAndSortedInvoices]);
 
   const allGroupedInvoices = useMemo(() => {
@@ -890,7 +894,15 @@ export default function App() {
       }).join('\t');
     });
 
-    const tsv = [headers, ...rows].join('\n');
+    // Add total row
+    const totalRow = colsToExport.map(col => {
+      if (col.id === 'doc_id') return "TOTAL";
+      if (col.id === 'total_amount') return invoiceTotals.total.toFixed(2).replace('.', ',');
+      if (col.id === 'concept') return "";
+      return "";
+    }).join('\t');
+
+    const tsv = [headers, ...rows, totalRow].join('\n');
     
     setTsvExportData(tsv);
     setIsCopied(false);
@@ -3157,7 +3169,9 @@ export default function App() {
               <div className="flex justify-end mb-2 px-1">
                 <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30 flex items-center gap-2">
                   <span>{filteredAndSortedInvoices.length} registros encontrados</span>
-                  <span className="text-[#0A0A0A] opacity-60">({formatCurrency(totalTaxBase)})</span>
+                  <span className="text-[#0A0A0A] opacity-60">
+                    (Total: {formatCurrency(invoiceTotals.total)})
+                  </span>
                 </div>
               </div>
 
