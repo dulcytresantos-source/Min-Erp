@@ -286,6 +286,60 @@ async function initDb() {
           bank_movement_id TEXT,
           FOREIGN KEY (invoice_id) REFERENCES invoices (id)
         )`
+      },
+      {
+        name: 'customers',
+        sql: `CREATE TABLE IF NOT EXISTS customers (
+          id TEXT PRIMARY KEY,
+          company_id INTEGER,
+          name TEXT NOT NULL,
+          cif TEXT NOT NULL,
+          alias TEXT,
+          name2 TEXT,
+          address TEXT,
+          address2 TEXT,
+          zip_code TEXT,
+          city TEXT,
+          province TEXT,
+          country_code TEXT,
+          phone TEXT,
+          email TEXT,
+          main_contact TEXT,
+          is_generic INTEGER DEFAULT 0,
+          FOREIGN KEY (company_id) REFERENCES companies (id)
+        )`
+      },
+      {
+        name: 'customer_invoices',
+        sql: `CREATE TABLE IF NOT EXISTS customer_invoices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER,
+          customer_id TEXT NOT NULL,
+          doc_id TEXT,
+          doc_ext TEXT,
+          invoice_number TEXT,
+          issue_date TEXT,
+          due_date TEXT,
+          tax_base REAL DEFAULT 0,
+          vat REAL DEFAULT 0,
+          total_amount REAL NOT NULL,
+          status TEXT DEFAULT 'Pending',
+          concept TEXT,
+          FOREIGN KEY (company_id) REFERENCES companies (id),
+          FOREIGN KEY (customer_id) REFERENCES customers (id)
+        )`
+      },
+      {
+        name: 'customer_payments',
+        sql: `CREATE TABLE IF NOT EXISTS customer_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_id INTEGER NOT NULL,
+          payment_date TEXT,
+          amount_paid REAL NOT NULL,
+          method TEXT,
+          bank_movement_id TEXT,
+          FOREIGN KEY (invoice_id) REFERENCES customer_invoices (id)
+        )`
       }
     ];
 
@@ -307,7 +361,11 @@ async function initDb() {
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_company_cif ON suppliers (company_id, cif)",
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique ON invoices (company_id, supplier_id, doc_ext)",
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_unique_num ON invoices (company_id, supplier_id, invoice_number)",
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)"
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_doc_id ON invoices (company_id, doc_id)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_company_cif ON customers (company_id, cif)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_invoices_unique ON customer_invoices (company_id, customer_id, doc_ext)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_invoices_unique_num ON customer_invoices (company_id, customer_id, invoice_number)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_invoices_doc_id ON customer_invoices (company_id, doc_id)"
     ];
 
     for (const idx of indexes) {
@@ -731,6 +789,398 @@ app.patch("/api/suppliers/:id", async (req, res) => {
         args,
       });
     }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// CUSTOMERS API
+app.get("/api/customers", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT c.*, 
+        (SELECT COALESCE(SUM(total_amount), 0) FROM customer_invoices WHERE customer_id = c.id AND company_id = ?) - 
+        (SELECT COALESCE(SUM(p.amount_paid), 0) FROM customer_payments p JOIN customer_invoices i ON p.invoice_id = i.id WHERE i.customer_id = c.id AND i.company_id = ?) as pending_balance
+        FROM customers c
+        WHERE c.company_id = ?
+      `,
+      args: [companyId, companyId, companyId]
+    });
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get("/api/customers/cif/:cif", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM customers WHERE cif = ? AND company_id = ?",
+      args: [req.params.cif ?? null, companyId],
+    });
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post("/api/customers", async (req, res) => {
+  const { company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic } = req.body;
+  try {
+    // Generate CLieXXX ID based on max current ID FOR THIS COMPANY
+    const maxIdResult = await db.execute({
+      sql: "SELECT id FROM customers WHERE company_id = ? AND id LIKE '%CLie%' ORDER BY id DESC LIMIT 1",
+      args: [company_id]
+    });
+    
+    let nextNum = 1;
+    if (maxIdResult.rows.length > 0) {
+      const lastId = maxIdResult.rows[0].id as string;
+      const lastNumPart = lastId.split('CLie').pop();
+      const lastNum = lastNumPart ? parseInt(lastNumPart) : NaN;
+      if (!isNaN(lastNum)) {
+        nextNum = lastNum + 1;
+      }
+    }
+    const id = `${company_id}-CLie${nextNum.toString().padStart(3, '0')}`;
+    
+    await db.execute({
+      sql: "INSERT INTO customers (id, company_id, name, cif, email, address, city, province, zip_code, country_code, alias, phone, name2, address2, main_contact, is_generic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [
+        id, 
+        company_id ?? null, 
+        name ?? null, 
+        cif ?? null, 
+        email ?? null, 
+        address ?? null, 
+        city ?? null, 
+        province ?? null, 
+        zip_code ?? null, 
+        country_code ?? 'ES', 
+        alias ?? null, 
+        phone ?? null, 
+        name2 ?? null, 
+        address2 ?? null, 
+        main_contact ?? null,
+        is_generic ?? 0
+      ],
+    });
+    res.json({ id });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get("/api/customers/:id", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const customer = await db.execute({
+      sql: "SELECT * FROM customers WHERE id = ? AND company_id = ?",
+      args: [req.params.id ?? null, companyId],
+    });
+    const invoices = await db.execute({
+      sql: `
+        SELECT i.*, 
+        (SELECT COALESCE(SUM(amount_paid), 0) FROM customer_payments WHERE invoice_id = i.id) as paid_amount
+        FROM customer_invoices i 
+        WHERE i.customer_id = ? AND i.company_id = ?
+      `,
+      args: [req.params.id ?? null, companyId],
+    });
+    res.json({ ...customer.rows[0], invoices: invoices.rows });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch("/api/customers/:id", async (req, res) => {
+  const { 
+    name, cif, email, address, city, province, zip_code, country_code, 
+    alias, phone, name2, address2, main_contact, is_generic 
+  } = req.body;
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    if (is_generic === 1) {
+      const existingGeneric = await db.execute({
+        sql: "SELECT name FROM customers WHERE is_generic = 1 AND company_id = ? AND id != ?",
+        args: [companyId, req.params.id],
+      });
+      if (existingGeneric.rows.length > 0) {
+        return res.status(400).json({ error: `Ya existe un cliente genérico para esta compañía: ${existingGeneric.rows[0].name}` });
+      }
+    }
+
+    const updates = [];
+    const args = [];
+    const fields = {
+      name, cif, email, address, city, province, zip_code, country_code, 
+      alias, phone, name2, address2, main_contact, is_generic
+    };
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        updates.push(`${key} = ?`);
+        args.push(value);
+      }
+    }
+    
+    if (updates.length > 0) {
+      args.push(req.params.id, companyId);
+      await db.execute({
+        sql: `UPDATE customers SET ${updates.join(", ")} WHERE id = ? AND company_id = ?`,
+        args,
+      });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete("/api/customers/:id", async (req, res) => {
+  const { id } = req.params;
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const invoices = await db.execute({
+      sql: "SELECT id FROM customer_invoices WHERE customer_id = ? AND company_id = ?",
+      args: [id, companyId]
+    });
+
+    if (invoices.rows.length > 0) {
+      return res.status(400).json({ error: "No se puede eliminar un cliente que tiene facturas asociadas." });
+    }
+
+    await db.execute({
+      sql: "DELETE FROM customers WHERE id = ? AND company_id = ?",
+      args: [id, companyId]
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get("/api/customer-invoices/all", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT i.*, c.name as supplier_name, c.alias as supplier_alias
+        FROM customer_invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.company_id = ?
+        ORDER BY i.issue_date DESC
+      `,
+      args: [companyId]
+    });
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get("/api/customer-movements/all", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const invoices = await db.execute({
+      sql: `
+        SELECT i.id, i.doc_id, i.doc_ext, i.invoice_number as reference, i.issue_date as date, i.total_amount as amount, 'Alta Factura' as type, c.name as supplier_name, c.alias as supplier_alias, i.customer_id as supplier_id, i.concept
+        FROM customer_invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.company_id = ?
+      `,
+      args: [companyId]
+    });
+    const payments = await db.execute({
+      sql: `
+        SELECT p.id, i.doc_id, i.doc_ext, i.invoice_number as reference, p.payment_date as date, p.amount_paid as amount, 'Cobro Factura' as type, p.bank_movement_id, c.name as supplier_name, c.alias as supplier_alias, i.customer_id as supplier_id, i.concept
+        FROM customer_payments p
+        JOIN customer_invoices i ON p.invoice_id = i.id
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.company_id = ?
+      `,
+      args: [companyId]
+    });
+    
+    const movements = [...invoices.rows, ...payments.rows].sort((a: any, b: any) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    res.json(movements);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get("/api/customers/:id/movements", async (req, res) => {
+  const companyId = (req.query.companyId as string) ?? null;
+  try {
+    const invoices = await db.execute({
+      sql: `
+        SELECT i.id, i.doc_id, i.doc_ext, i.invoice_number as reference, i.issue_date as date, i.total_amount as amount, 'Alta Factura' as type, 
+               c.name as supplier_name, c.alias as supplier_alias, i.customer_id as supplier_id, i.concept
+        FROM customer_invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.customer_id = ? AND i.company_id = ?
+      `,
+      args: [req.params.id ?? null, companyId],
+    });
+    const payments = await db.execute({
+      sql: `
+        SELECT p.id, i.doc_id, i.doc_ext, i.invoice_number as reference, p.payment_date as date, p.amount_paid as amount, 'Cobro Factura' as type, 
+               p.bank_movement_id, c.name as supplier_name, c.alias as supplier_alias, i.customer_id as supplier_id, i.concept
+        FROM customer_payments p
+        JOIN customer_invoices i ON p.invoice_id = i.id
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.customer_id = ? AND i.company_id = ?
+      `,
+      args: [req.params.id ?? null, companyId],
+    });
+    
+    const movements = [...invoices.rows, ...payments.rows].sort((a: any, b: any) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    res.json(movements);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post("/api/customer-invoices", async (req, res) => {
+  const { company_id, customer_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status, concept } = req.body;
+  try {
+    const result = await db.execute({
+      sql: "INSERT INTO customer_invoices (company_id, customer_id, doc_id, doc_ext, invoice_number, issue_date, due_date, tax_base, vat, total_amount, status, concept) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [
+        company_id ?? null, 
+        customer_id ?? null, 
+        doc_id ?? null, 
+        doc_ext ?? null, 
+        invoice_number ?? null, 
+        issue_date ?? null, 
+        due_date ?? null, 
+        tax_base ?? 0, 
+        vat ?? 0, 
+        total_amount ?? 0, 
+        status ?? 'Pending',
+        concept ?? null
+      ],
+    });
+    res.json({ id: Number(result.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch("/api/customer-invoices/:id/concept", async (req, res) => {
+  const { concept } = req.body;
+  try {
+    await db.execute({
+      sql: "UPDATE customer_invoices SET concept = ? WHERE id = ?",
+      args: [concept ?? null, req.params.id],
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete("/api/customer-invoices/:id", async (req, res) => {
+  try {
+    // Delete associated payments first
+    await db.execute({
+      sql: "DELETE FROM customer_payments WHERE invoice_id = ?",
+      args: [req.params.id]
+    });
+    await db.execute({
+      sql: "DELETE FROM customer_invoices WHERE id = ?",
+      args: [req.params.id]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post("/api/customer-payments", async (req, res) => {
+  const { invoice_id, payment_date, amount_paid, method, bank_movement_id } = req.body;
+  try {
+    const result = await db.execute({
+      sql: "INSERT INTO customer_payments (invoice_id, payment_date, amount_paid, method, bank_movement_id) VALUES (?, ?, ?, ?, ?)",
+      args: [invoice_id ?? null, payment_date ?? null, amount_paid ?? 0, method ?? null, bank_movement_id ?? null],
+    });
+    
+    // Update invoice status
+    const invResult = await db.execute({
+      sql: "SELECT total_amount FROM customer_invoices WHERE id = ?",
+      args: [invoice_id]
+    });
+    const totalAmount = Number(invResult.rows[0].total_amount);
+    
+    const paidResult = await db.execute({
+      sql: "SELECT SUM(amount_paid) as total_paid FROM customer_payments WHERE invoice_id = ?",
+      args: [invoice_id]
+    });
+    const totalPaid = Number(paidResult.rows[0].total_paid);
+    
+    let status = 'Pending';
+    if (totalPaid >= totalAmount) status = 'Paid';
+    else if (totalPaid > 0) status = 'Partial';
+    
+    await db.execute({
+      sql: "UPDATE customer_invoices SET status = ? WHERE id = ?",
+      args: [status, invoice_id]
+    });
+    
+    res.json({ id: Number(result.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete("/api/customer-payments/:id", async (req, res) => {
+  try {
+    const payResult = await db.execute({
+      sql: "SELECT invoice_id FROM customer_payments WHERE id = ?",
+      args: [req.params.id]
+    });
+    const invoiceId = payResult.rows[0]?.invoice_id;
+    
+    await db.execute({
+      sql: "DELETE FROM customer_payments WHERE id = ?",
+      args: [req.params.id]
+    });
+    
+    if (invoiceId) {
+      // Update invoice status
+      const invResult = await db.execute({
+        sql: "SELECT total_amount FROM customer_invoices WHERE id = ?",
+        args: [invoiceId]
+      });
+      const totalAmount = Number(invResult.rows[0].total_amount);
+      
+      const paidResult = await db.execute({
+        sql: "SELECT SUM(amount_paid) as total_paid FROM customer_payments WHERE invoice_id = ?",
+        args: [invoiceId]
+      });
+      const totalPaid = Number(paidResult.rows[0].total_paid || 0);
+      
+      let status = 'Pending';
+      if (totalPaid >= totalAmount) status = 'Paid';
+      else if (totalPaid > 0) status = 'Partial';
+      
+      await db.execute({
+        sql: "UPDATE customer_invoices SET status = ? WHERE id = ?",
+        args: [status, invoiceId]
+      });
+    }
+    
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

@@ -15,9 +15,11 @@ import {
   Loader2,
   Table as TableIcon,
   ChevronRight,
+  ChevronDown,
   CreditCard,
   Calendar,
   UserPlus,
+  UserCheck,
   Users,
   Upload,
   ArrowUp,
@@ -84,6 +86,26 @@ const toTitleCase = (str: string) => {
 };
 
 interface Supplier {
+  id: string;
+  company_id: number;
+  name: string;
+  alias?: string;
+  name2?: string;
+  address: string;
+  address2?: string;
+  zip_code?: string;
+  city?: string;
+  province?: string;
+  country_code?: string;
+  phone?: string;
+  email: string;
+  cif: string;
+  main_contact?: string;
+  pending_balance: number;
+  is_generic?: number;
+}
+
+interface Customer {
   id: string;
   company_id: number;
   name: string;
@@ -364,22 +386,33 @@ export default function App() {
     return parts.length > 1 ? parts[parts.length - 1] : id;
   };
 
-  const [view, setView] = useState<'suppliers' | 'upload' | 'supplier-detail' | 'history' | 'movements' | 'invoice-document'>('suppliers');
-  const [previousView, setPreviousView] = useState<'movements' | 'supplier-detail' | null>(null);
+  const [view, setView] = useState<'suppliers' | 'customers' | 'upload' | 'supplier-detail' | 'customer-detail' | 'history' | 'customer-history' | 'movements' | 'customer-movements' | 'invoice-document' | 'customer-invoice-document'>('suppliers');
+  const [expandedSection, setExpandedSection] = useState<'suppliers' | 'customers'>('suppliers');
+  const [previousView, setPreviousView] = useState<'movements' | 'customer-movements' | 'supplier-detail' | 'customer-detail' | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
   const genericSupplier = useMemo(() => 
     suppliers.find(s => s.is_generic && s.company_id === activeCompanyId),
     [suppliers, activeCompanyId]
   );
+  const genericCustomer = useMemo(() => 
+    customers.find(c => c.is_generic && c.company_id === activeCompanyId),
+    [customers, activeCompanyId]
+  );
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const [allCustomerInvoices, setAllCustomerInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [movementsFilterSupplierId, setMovementsFilterSupplierId] = useState<string | null>(null);
+  const [movementsFilterCustomerId, setMovementsFilterCustomerId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'General' | 'Comunicación' | 'Facturación' | 'Pagos' | 'Envíos' | 'Internacional' | 'Precios'>('General');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [customerInvoices, setCustomerInvoices] = useState<Invoice[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [customerMovements, setCustomerMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -607,9 +640,14 @@ export default function App() {
   const [userDeleteCodeInput, setUserDeleteCodeInput] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isEditingSupplier, setIsEditingSupplier] = useState(false);
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [isCreatingManualInvoice, setIsCreatingManualInvoice] = useState(false);
+  const [isCreatingManualCustomerInvoice, setIsCreatingManualCustomerInvoice] = useState(false);
   const [isDeletingInvoice, setIsDeletingInvoice] = useState<Invoice | null>(null);
+  const [isDeletingCustomerInvoice, setIsDeletingCustomerInvoice] = useState<Invoice | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState<Supplier | null>(null);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState<Customer | null>(null);
   const [dbStatus, setDbStatus] = useState<{
     database: string;
     url: string;
@@ -643,12 +681,33 @@ export default function App() {
     { id: 'pending_balance', label: 'Saldo (EUR)', width: '120px', sortKey: 'pending_balance' },
   ]);
 
+  const [customerColumns, setCustomerColumns] = useState([
+    { id: 'id', label: 'Nº Clie.', width: '100px', sortKey: 'id' },
+    { id: 'name', label: 'Nombre / Alias', width: '1fr', sortKey: 'name' },
+    { id: 'cif', label: 'CIF/NIF', width: '120px', sortKey: 'cif' },
+    { id: 'city', label: 'Población', width: '140px', sortKey: 'city' },
+    { id: 'pending_balance', label: 'Saldo (EUR)', width: '120px', sortKey: 'pending_balance' },
+  ]);
+
   const [movementColumns, setMovementColumns] = useState([
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
     { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
     { id: 'supplier_id', label: 'Cód. Prov.', width: '100px', sortKey: 'supplier_id' },
     { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr', sortKey: 'supplier_name' },
+    { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
+    { id: 'amount', label: 'Imp. Inicial', width: '100px', sortKey: 'amount' },
+    { id: 'pending', label: 'Imp. Pdte.', width: '100px', sortKey: 'pending' },
+    { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
+    { id: 'payments', label: 'Liqs.', width: '60px', sortKey: 'payments' },
+  ]);
+
+  const [customerMovementColumns, setCustomerMovementColumns] = useState([
+    { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
+    { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
+    { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
+    { id: 'supplier_id', label: 'Cód. Clie.', width: '100px', sortKey: 'supplier_id' },
+    { id: 'supplier_name', label: 'Cliente / Referencia', width: '1fr', sortKey: 'supplier_name' },
     { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
     { id: 'amount', label: 'Imp. Inicial', width: '100px', sortKey: 'amount' },
     { id: 'pending', label: 'Imp. Pdte.', width: '100px', sortKey: 'pending' },
@@ -668,7 +727,28 @@ export default function App() {
     { id: 'actions', label: 'Acciones', width: '60px', sortKey: null },
   ]);
 
+  const [customerHistoryColumns, setCustomerHistoryColumns] = useState([
+    { id: 'doc_id', label: 'DOC (Int)', width: '140px', sortKey: 'doc_id' },
+    { id: 'doc_ext', label: 'DOCEXT (Ext)', width: '120px', sortKey: 'doc_ext' },
+    { id: 'supplier_id', label: 'Cód. Clie.', width: '100px', sortKey: 'supplier_id' },
+    { id: 'supplier_name', label: 'Cliente', width: '1.5fr', sortKey: 'supplier_name' },
+    { id: 'issue_date', label: 'Fecha', width: '100px', sortKey: 'issue_date' },
+    { id: 'concept', label: 'Concepto', width: '1fr', sortKey: 'concept' },
+    { id: 'total_amount', label: 'Total', width: '120px', sortKey: 'total_amount' },
+    { id: 'status', label: 'Estado', width: '100px', sortKey: 'status' },
+    { id: 'actions', label: 'Acciones', width: '60px', sortKey: null },
+  ]);
+
   const [supplierInvoicesColumns, setSupplierInvoicesColumns] = useState([
+    { id: 'doc_id', label: 'DOC.', width: '100px', sortKey: 'doc_id' },
+    { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
+    { id: 'reference', label: 'Referencia', width: '1fr', sortKey: 'reference' },
+    { id: 'concept', label: 'Concepto', width: '1.5fr', sortKey: 'concept' },
+    { id: 'amount', label: 'Total', width: '100px', sortKey: 'amount' },
+    { id: 'pending', label: 'Pendiente', width: '100px', sortKey: 'pending' },
+  ]);
+
+  const [customerInvoicesColumns, setCustomerInvoicesColumns] = useState([
     { id: 'doc_id', label: 'DOC.', width: '100px', sortKey: 'doc_id' },
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'reference', label: 'Referencia', width: '1fr', sortKey: 'reference' },
@@ -937,6 +1017,19 @@ export default function App() {
       if (Array.isArray(invData)) {
         setAllInvoices(invData);
       }
+
+      // Fetch Customers
+      const custRes = await fetch(`/api/customers?companyId=${activeCompanyId}`);
+      const customersData = await custRes.json();
+      if (Array.isArray(customersData)) {
+        setCustomers(customersData);
+      }
+
+      const custInvRes = await fetch(`/api/customer-invoices/all?companyId=${activeCompanyId}`);
+      const custInvData = await custInvRes.json();
+      if (Array.isArray(custInvData)) {
+        setAllCustomerInvoices(custInvData);
+      }
     } catch (error: any) {
       logDebug("error", "fetchData FAILED: " + error.message);
       console.error("Error fetching data:", error);
@@ -1080,6 +1173,26 @@ export default function App() {
     }
   };
 
+  const fetchCustomerDetails = async (id: string) => {
+    if (!activeCompanyId) return;
+    setMovementsFilterCustomerId(id);
+    try {
+      const res = await fetch(`/api/customers/${id}?companyId=${activeCompanyId}`);
+      const data = await res.json();
+      if (data && !data.error) {
+        setCustomerInvoices(data.invoices || []);
+      }
+      
+      const mRes = await fetch(`/api/customers/${id}/movements?companyId=${activeCompanyId}`);
+      const mData = await mRes.json();
+      if (Array.isArray(mData)) {
+        setCustomerMovements(mData);
+      }
+    } catch (error) {
+      console.error("Error fetching customer details:", error);
+    }
+  };
+
   const handleUpdateAlias = async (id: string, newAlias: string) => {
     if (!activeCompanyId) return;
     try {
@@ -1107,6 +1220,19 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error fetching all movements:", error);
+    }
+  };
+
+  const fetchAllCustomerMovements = async () => {
+    if (!activeCompanyId) return;
+    try {
+      const res = await fetch(`/api/customer-movements/all?companyId=${activeCompanyId}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setCustomerMovements(data);
+      }
+    } catch (error) {
+      console.error("Error fetching all customer movements:", error);
     }
   };
 
@@ -1447,6 +1573,46 @@ export default function App() {
     setActiveTab('General');
   };
 
+  const handleNewCustomer = () => {
+    // Find max ID like CLieXXX
+    const clieIds = customers
+      .map(c => c.id)
+      .filter(id => id.includes('CLie'))
+      .map(id => {
+        const parts = id.split('CLie');
+        const num = parseInt(parts[parts.length - 1]);
+        return isNaN(num) ? 0 : num;
+      });
+    
+    const nextNum = clieIds.length > 0 ? Math.max(...clieIds) + 1 : 1;
+    const nextId = `${activeCompanyId}-CLie${nextNum.toString().padStart(3, '0')}`;
+
+    const newCustomer: Customer = {
+      id: nextId,
+      company_id: activeCompanyId || 0,
+      name: '',
+      cif: '',
+      email: '',
+      address: '',
+      city: '',
+      province: '',
+      zip_code: '',
+      country_code: 'ES',
+      alias: '',
+      phone: '',
+      name2: '',
+      address2: '',
+      main_contact: '',
+      pending_balance: 0,
+      is_generic: 0
+    };
+
+    setSelectedCustomer(newCustomer);
+    setIsCreatingCustomer(true);
+    setView('customer-detail');
+    setActiveTab('General');
+  };
+
   const handleSaveNewSupplier = async () => {
     if (!selectedSupplier || !activeCompanyId) return;
     
@@ -1482,6 +1648,41 @@ export default function App() {
     }
   };
 
+  const handleSaveNewCustomer = async () => {
+    if (!selectedCustomer || !activeCompanyId) return;
+    
+    if (!selectedCustomer.name || !selectedCustomer.cif) {
+      alert("El nombre y el CIF son obligatorios");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...selectedCustomer,
+          company_id: activeCompanyId
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al guardar el cliente");
+        return;
+      }
+
+      // Refresh list
+      await fetchData();
+      setIsCreatingCustomer(false);
+      setView('customers');
+      setSelectedCustomer(null);
+    } catch (err) {
+      console.error("Error saving new customer:", err);
+      alert("Error al guardar el cliente");
+    }
+  };
+
   const handleUpdateSupplier = async () => {
     if (!selectedSupplier || !activeCompanyId) return;
     
@@ -1510,6 +1711,37 @@ export default function App() {
     } catch (err) {
       console.error("Error updating supplier:", err);
       alert("Error al actualizar el proveedor");
+    }
+  };
+
+  const handleUpdateCustomer = async () => {
+    if (!selectedCustomer || !activeCompanyId) return;
+    
+    if (!selectedCustomer.name || !selectedCustomer.cif) {
+      alert("El nombre y el CIF son obligatorios");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomer.id}?companyId=${activeCompanyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selectedCustomer)
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al actualizar el cliente");
+        return;
+      }
+
+      // Refresh list
+      await fetchData();
+      setIsEditingCustomer(false);
+      logDebug("info", "Cliente actualizado correctamente");
+    } catch (err) {
+      console.error("Error updating customer:", err);
+      alert("Error al actualizar el cliente");
     }
   };
 
@@ -1845,6 +2077,39 @@ export default function App() {
     }
   };
 
+  const handleDeleteCustomerInvoice = async (invoiceId: number) => {
+    if (!invoiceId) return;
+    try {
+      const res = await fetch(`/api/customer-invoices/${invoiceId}`, {
+        method: "DELETE"
+      });
+      
+      if (!res.ok) {
+        let errorMessage = "Error al eliminar la factura";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } else {
+          const textError = await res.text();
+          console.error("Server returned non-JSON error:", textError);
+          errorMessage = `Error del servidor (${res.status})`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      setIsDeletingCustomerInvoice(null);
+      await fetchData();
+      await fetchAllCustomerMovements();
+      if (selectedCustomer && activeCompanyId) {
+        fetchCustomerDetails(selectedCustomer.id);
+      }
+    } catch (err) {
+      console.error("Error deleting customer invoice:", err);
+      alert(err instanceof Error ? err.message : "Error al eliminar la factura");
+    }
+  };
+
   const handleDeleteSupplier = async (supplierId: string) => {
     if (!supplierId) return;
     try {
@@ -1876,6 +2141,37 @@ export default function App() {
     }
   };
 
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!customerId) return;
+    try {
+      const res = await fetch(`/api/customers/${customerId}?companyId=${activeCompanyId}`, {
+        method: "DELETE"
+      });
+      
+      if (!res.ok) {
+        let errorMessage = "Error al eliminar el cliente";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } else {
+          const textError = await res.text();
+          console.error("Server returned non-JSON error:", textError);
+          errorMessage = `Error del servidor (${res.status})`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      setIsDeletingCustomer(null);
+      setSelectedCustomer(null);
+      setView('customers');
+      await fetchData();
+    } catch (err) {
+      console.error("Error deleting customer:", err);
+      alert(err instanceof Error ? err.message : "Error al eliminar el cliente");
+    }
+  };
+
   const sortedSuppliers = useMemo(() => {
     const filtered = suppliers.filter(s => 
       (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1898,6 +2194,29 @@ export default function App() {
       return 0;
     });
   }, [suppliers, searchQuery, sortConfig]);
+
+  const sortedCustomers = useMemo(() => {
+    const filtered = customers.filter(c => 
+      (c.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (c.alias || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (c.cif || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.id || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return [...filtered].sort((a, b) => {
+      const key = sortConfig.key as keyof Customer;
+      const aValue = a[key] ?? "";
+      const bValue = b[key] ?? "";
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [customers, searchQuery, sortConfig]);
 
   const handleSort = (key: string) => {
     setSortConfig(prev => ({
@@ -1934,51 +2253,132 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 flex flex-col gap-1">
+        <nav className="flex-1 p-4 flex flex-col gap-1 overflow-y-auto scrollbar-hide">
           <p className="px-4 mb-2 text-[8px] font-bold uppercase tracking-[0.3em] opacity-20">Navegación</p>
-          <button 
-            onClick={() => setView('suppliers')}
-            className={cn(
-              "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'suppliers' || view === 'supplier-detail' ? "bg-[#0A0A0A] text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
-            )}
-          >
-            <Users size={14} />
-            Proveedores
-          </button>
-          <button 
-            onClick={() => setView('upload')}
-            className={cn(
-              "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'upload' ? "bg-violet-600 text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
-            )}
-          >
-            <Upload size={14} />
-            Subir Factura
-          </button>
-          <button 
-            onClick={() => {
-              setMovementsFilterSupplierId(null);
-              setView('movements');
-            }}
-            className={cn(
-              "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'movements' ? "bg-[#0A0A0A] text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
-            )}
-          >
-            <History size={14} />
-            Movimientos Proveedor
-          </button>
-          <button 
-            onClick={() => setView('history')}
-            className={cn(
-              "flex items-center gap-3 px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
-              view === 'history' ? "bg-[#0A0A0A] text-white" : "hover:bg-[#F5F5F4] text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
-            )}
-          >
-            <TableIcon size={14} />
-            Histórico Facturas
-          </button>
+          
+          {/* Suppliers Section */}
+          <div className="mb-2">
+            <button 
+              onClick={() => setExpandedSection(expandedSection === 'suppliers' ? 'suppliers' : 'suppliers')}
+              className={cn(
+                "w-full flex items-center justify-between px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
+                expandedSection === 'suppliers' ? "bg-[#F5F5F4] text-[#0A0A0A]" : "text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <Users size={14} />
+                Proveedores
+              </div>
+              <ChevronDown size={12} className={cn("transition-transform", expandedSection === 'suppliers' ? "" : "-rotate-90")} />
+            </button>
+            
+            <AnimatePresence>
+              {expandedSection === 'suppliers' && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden flex flex-col gap-1 mt-1 ml-4 border-l border-[#0A0A0A]/5"
+                >
+                  <button 
+                    onClick={() => setView('suppliers')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'suppliers' || view === 'supplier-detail' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Maestro
+                  </button>
+                  <button 
+                    onClick={() => setView('upload')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'upload' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Subir Factura
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setMovementsFilterSupplierId(null);
+                      setView('movements');
+                    }}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'movements' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Movimientos
+                  </button>
+                  <button 
+                    onClick={() => setView('history')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'history' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Histórico
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Customers Section */}
+          <div className="mb-2">
+            <button 
+              onClick={() => setExpandedSection(expandedSection === 'customers' ? 'customers' : 'customers')}
+              className={cn(
+                "w-full flex items-center justify-between px-4 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all",
+                expandedSection === 'customers' ? "bg-[#F5F5F4] text-[#0A0A0A]" : "text-[#0A0A0A]/50 hover:text-[#0A0A0A]"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <UserCheck size={14} />
+                Clientes
+              </div>
+              <ChevronDown size={12} className={cn("transition-transform", expandedSection === 'customers' ? "" : "-rotate-90")} />
+            </button>
+            
+            <AnimatePresence>
+              {expandedSection === 'customers' && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden flex flex-col gap-1 mt-1 ml-4 border-l border-[#0A0A0A]/5"
+                >
+                  <button 
+                    onClick={() => setView('customers')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'customers' || view === 'customer-detail' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Maestro
+                  </button>
+                  <button 
+                    onClick={() => setView('customer-movements')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'customer-movements' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Movimientos
+                  </button>
+                  <button 
+                    onClick={() => setView('customer-history')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'customer-history' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Histórico
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </nav>
 
         <div className="p-8 border-t border-[#0A0A0A]/10 flex flex-col gap-6">
@@ -2418,6 +2818,126 @@ export default function App() {
                 </div>
                 
                 {sortedSuppliers.length === 0 && (
+                  <div className="p-20 text-center opacity-20 flex flex-col items-center">
+                    <Search size={48} strokeWidth={1} className="mb-4" />
+                    <p className="text-xs font-bold uppercase tracking-widest">No se han encontrado registros coincidentes</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'customers' && (
+            <motion.div 
+              key="customers"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="max-w-5xl mx-auto"
+            >
+              <div className="flex justify-between items-end mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Maestro de Clientes</h2>
+                  <p className="text-xs font-bold uppercase tracking-widest opacity-40">Gestión de Cuentas a Cobrar / Ledger de Entidades</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="FILTRAR POR NOMBRE, CIF O ID..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none text-[10px] font-bold uppercase tracking-widest focus:border-[#0A0A0A] transition-all placeholder:opacity-30"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleNewCustomer}
+                    className="p-2 bg-violet-600 text-white rounded-sm hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 flex items-center justify-center shrink-0"
+                    title="Nuevo Cliente"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
+                  {sortedCustomers.length} clientes encontrados
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
+                {/* Technical Header */}
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setCustomerColumns)}
+                >
+                  <div 
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getSupplierGridTemplate(customerColumns) }}
+                  >
+                    <div className="p-1.5 border-r border-[#0A0A0A]/5"></div>
+                    <SortableContext items={customerColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {customerColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={sortConfig}
+                          onSort={handleSort}
+                          isLast={idx === customerColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+
+                <div className="divide-y divide-[#0A0A0A]/5">
+                  {sortedCustomers.map(c => (
+                    <button 
+                      key={c.id}
+                      onClick={() => {
+                        setSelectedCustomer(c);
+                        setIsCreatingCustomer(false);
+                        setMovementsFilterCustomerId(c.id);
+                        fetchCustomerDetails(c.id);
+                        setView('customer-detail');
+                        setActiveTab('General');
+                      }}
+                      className="grid w-full text-left hover:bg-[#0A0A0A] hover:text-white transition-colors group"
+                      style={{ gridTemplateColumns: getSupplierGridTemplate(customerColumns) }}
+                    >
+                      <div className="p-1.5 border-r border-[#0A0A0A]/5 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <ChevronRight size={14} />
+                      </div>
+                      {customerColumns.map((col) => {
+                        if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{formatSupplierId(c.id)}</div>;
+                        if (col.id === 'name') return (
+                          <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 flex flex-col justify-center truncate">
+                            <span className="font-bold text-xs truncate">{toTitleCase(c.name)}</span>
+                            {c.alias && <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest truncate group-hover:opacity-100">{c.alias}</span>}
+                          </div>
+                        );
+                        if (col.id === 'cif') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{c.cif}</div>;
+                        if (col.id === 'city') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 text-[11px] flex items-center truncate opacity-60 group-hover:opacity-100 uppercase font-medium">{c.city || "---"}</div>;
+                        if (col.id === 'pending_balance') return (
+                          <div key={col.id} className={cn(
+                            "p-1.5 text-right font-mono text-[11px] flex items-center justify-end font-bold",
+                            c.pending_balance > 0 ? "text-rose-600 group-hover:text-rose-400" : "text-teal-600 group-hover:text-teal-400"
+                          )}>
+                            {formatCurrency(c.pending_balance ?? 0)}
+                          </div>
+                        );
+                        return null;
+                      })}
+                    </button>
+                  ))}
+                </div>
+                
+                {sortedCustomers.length === 0 && (
                   <div className="p-20 text-center opacity-20 flex flex-col items-center">
                     <Search size={48} strokeWidth={1} className="mb-4" />
                     <p className="text-xs font-bold uppercase tracking-widest">No se han encontrado registros coincidentes</p>
@@ -2921,6 +3441,415 @@ export default function App() {
                   )}
 
                   {activeTab !== 'General' && activeTab !== 'Comunicación' && activeTab !== 'Facturación' && (
+                    <div className="p-12 text-center border border-dashed border-[#0A0A0A]/10 rounded-sm">
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Sección en desarrollo: {activeTab}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'customer-detail' && selectedCustomer && (
+            <motion.div 
+              key="customer-detail"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-6xl mx-auto"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => {
+                      setView('customers');
+                      setIsCreatingCustomer(false);
+                    }}
+                    className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm hover:bg-[#F5F5F4] transition-colors"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  <div>
+                    <h2 className="text-3xl font-bold tracking-tighter">
+                      {isCreatingCustomer ? "Nuevo Cliente" : selectedCustomer.name}
+                    </h2>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40">
+                      Ficha de Cliente / {formatSupplierId(selectedCustomer.id)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isCreatingCustomer && (
+                    <button 
+                      onClick={() => {
+                        if (isEditingCustomer) {
+                          handleUpdateCustomer();
+                        } else {
+                          setIsEditingCustomer(true);
+                        }
+                      }}
+                      className={cn(
+                        "px-6 py-2 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg",
+                        isEditingCustomer ? "bg-teal-600 text-white shadow-teal-600/20" : "bg-[#0A0A0A] text-white shadow-[#0A0A0A]/20"
+                      )}
+                    >
+                      {isEditingCustomer ? "Guardar Cambios" : "Editar Ficha"}
+                    </button>
+                  )}
+                  {isCreatingCustomer && (
+                    <button 
+                      onClick={handleSaveNewCustomer}
+                      className="px-6 py-2 bg-violet-600 text-white rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg shadow-violet-600/20"
+                    >
+                      Crear Cliente
+                    </button>
+                  )}
+                  {!isCreatingCustomer && (
+                    <button 
+                      onClick={() => setIsDeletingCustomer(selectedCustomer)}
+                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-sm transition-colors"
+                      title="Eliminar Cliente"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
+                {/* Tabs */}
+                <div className="flex border-b border-[#0A0A0A]/10 bg-[#F5F5F4]">
+                  {['General', 'Comunicación', 'Facturación', 'Cobros'].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab as any)}
+                      className={cn(
+                        "px-8 py-4 text-[10px] font-bold uppercase tracking-widest transition-all relative",
+                        activeTab === tab 
+                          ? "text-[#0A0A0A] bg-white" 
+                          : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                      )}
+                    >
+                      {tab}
+                      {activeTab === tab && (
+                        <motion.div 
+                          layoutId="activeTabCustomer"
+                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-600"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="p-12">
+                  {activeTab === 'General' && (
+                    <div className="grid grid-cols-2 gap-12">
+                      <div className="space-y-8">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Nombre / Razón Social</label>
+                          <input 
+                            type="text"
+                            value={selectedCustomer.name}
+                            onChange={(e) => setSelectedCustomer({ ...selectedCustomer, name: e.target.value })}
+                            disabled={!isEditingCustomer && !isCreatingCustomer}
+                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-xl font-bold tracking-tight outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                            placeholder="NOMBRE DE LA EMPRESA..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Nombre Comercial / Alias</label>
+                          <input 
+                            type="text"
+                            value={selectedCustomer.alias || ""}
+                            onChange={(e) => setSelectedCustomer({ ...selectedCustomer, alias: e.target.value })}
+                            disabled={!isEditingCustomer && !isCreatingCustomer}
+                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-lg font-bold tracking-tight outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                            placeholder="ALIAS..."
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-8">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">CIF / NIF</label>
+                            <input 
+                              type="text"
+                              value={selectedCustomer.cif}
+                              onChange={(e) => setSelectedCustomer({ ...selectedCustomer, cif: e.target.value.toUpperCase() })}
+                              disabled={!isEditingCustomer && !isCreatingCustomer}
+                              className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 font-mono text-lg outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                              placeholder="A12345678..."
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">ID Sistema</label>
+                            <div className="py-2 font-mono text-lg opacity-40">{selectedCustomer.id}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-8 bg-[#F5F5F4]/50 p-8 rounded-sm">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Estado de Cuenta</h3>
+                          <div className="px-3 py-1 bg-teal-100 text-teal-700 text-[9px] font-bold uppercase tracking-widest rounded-full">Activo</div>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Saldo Pendiente</span>
+                            <span className={cn(
+                              "text-3xl font-bold tracking-tighter font-mono",
+                              selectedCustomer.pending_balance > 0 ? "text-rose-600" : "text-teal-600"
+                            )}>
+                              {formatCurrency(selectedCustomer.pending_balance)}
+                            </span>
+                          </div>
+                          <div className="h-1 bg-[#0A0A0A]/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-violet-600 w-1/3"></div>
+                          </div>
+                        </div>
+                        <div className="pt-4 border-t border-[#0A0A0A]/5 grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest opacity-30">Total Facturado</p>
+                            <p className="text-sm font-bold font-mono">{formatCurrency(customerInvoices.reduce((acc, inv) => acc + inv.amount, 0))}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest opacity-30">Total Cobrado</p>
+                            <p className="text-sm font-bold font-mono">{formatCurrency(customerInvoices.reduce((acc, inv) => acc + (inv.amount - inv.pending), 0))}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-4">
+                          <button 
+                            onClick={() => handleToggleGeneric(selectedCustomer.id, !!selectedCustomer.is_generic)}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                              selectedCustomer.is_generic 
+                                ? "bg-amber-100 text-amber-700 border border-amber-200" 
+                                : "bg-white text-[#0A0A0A]/40 border border-[#0A0A0A]/10 hover:border-[#0A0A0A]/30"
+                            )}
+                          >
+                            <Layers size={12} />
+                            {selectedCustomer.is_generic ? "Cliente Genérico" : "Marcar como Genérico"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'Comunicación' && (
+                    <div className="grid grid-cols-2 gap-12">
+                      <div className="space-y-8">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Dirección Principal</label>
+                          <textarea 
+                            value={selectedCustomer.address || ""}
+                            onChange={(e) => setSelectedCustomer({ ...selectedCustomer, address: e.target.value })}
+                            disabled={!isEditingCustomer && !isCreatingCustomer}
+                            rows={3}
+                            className="w-full bg-transparent border border-[#0A0A0A]/10 p-3 text-sm font-medium outline-none focus:border-violet-600 transition-colors disabled:opacity-100 rounded-sm resize-none"
+                            placeholder="CALLE, NÚMERO, PISO..."
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-8">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Población</label>
+                            <input 
+                              type="text"
+                              value={selectedCustomer.city || ""}
+                              onChange={(e) => setSelectedCustomer({ ...selectedCustomer, city: e.target.value })}
+                              disabled={!isEditingCustomer && !isCreatingCustomer}
+                              className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-sm font-bold outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                              placeholder="CIUDAD..."
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Código Postal</label>
+                            <input 
+                              type="text"
+                              value={selectedCustomer.zip_code || ""}
+                              onChange={(e) => setSelectedCustomer({ ...selectedCustomer, zip_code: e.target.value })}
+                              disabled={!isEditingCustomer && !isCreatingCustomer}
+                              className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-sm font-bold outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                              placeholder="28001..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-8">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Email de Facturación</label>
+                          <input 
+                            type="email"
+                            value={selectedCustomer.email || ""}
+                            onChange={(e) => setSelectedCustomer({ ...selectedCustomer, email: e.target.value })}
+                            disabled={!isEditingCustomer && !isCreatingCustomer}
+                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-sm font-bold outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                            placeholder="FACTURACION@CLIENTE.COM..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Teléfono</label>
+                          <input 
+                            type="text"
+                            value={selectedCustomer.phone || ""}
+                            onChange={(e) => setSelectedCustomer({ ...selectedCustomer, phone: e.target.value })}
+                            disabled={!isEditingCustomer && !isCreatingCustomer}
+                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-sm font-bold outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                            placeholder="+34 900 000 000..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'Facturación' && (
+                    <div className="space-y-8">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-bold uppercase tracking-widest">Historial de Facturas Emitidas</h3>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setIsCreatingManualCustomerInvoice(true)}
+                            className="px-4 py-2 bg-[#0A0A0A] text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all flex items-center gap-2"
+                          >
+                            <Plus size={14} />
+                            Nueva Factura
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="border border-[#0A0A0A]/10 rounded-sm overflow-hidden">
+                        <div 
+                          className="grid bg-[#F5F5F4] border-b border-[#0A0A0A]/10 text-[9px] font-bold uppercase tracking-widest opacity-50"
+                          style={{ gridTemplateColumns: getSupplierGridTemplate(customerInvoicesColumns) }}
+                        >
+                          {customerInvoicesColumns.map((col) => (
+                            <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5">{col.label}</div>
+                          ))}
+                        </div>
+                        <div className="divide-y divide-[#0A0A0A]/5 max-h-[400px] overflow-y-auto">
+                          {customerInvoices
+                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                            .map((inv) => (
+                              <div 
+                                key={inv.id} 
+                                className="grid hover:bg-[#F5F5F4] transition-colors group relative"
+                                style={{ gridTemplateColumns: getSupplierGridTemplate(customerInvoicesColumns) }}
+                              >
+                                {customerInvoicesColumns.map((col) => {
+                                  if (col.id === 'doc_id') return <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5 text-[10px] font-mono flex items-center">{inv.doc_id}</div>;
+                                  if (col.id === 'date') return <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
+                                  if (col.id === 'reference') return <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5 text-[10px] font-bold flex items-center">{inv.reference}</div>;
+                                  if (col.id === 'concept') return (
+                                    <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5 text-[10px] flex items-center overflow-hidden" title={inv.concept}>
+                                      <span className="truncate">{inv.concept || "-"}</span>
+                                    </div>
+                                  );
+                                  if (col.id === 'amount') return <div key={col.id} className="p-2 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono flex items-center justify-end">{formatCurrency(inv.amount)}</div>;
+                                  if (col.id === 'pending') return <div key={col.id} className="p-2 text-[10px] text-right font-mono text-rose-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
+                                  return null;
+                                })}
+                                <div className="absolute right-0 top-0 bottom-0 flex items-center px-2 opacity-0 group-hover:opacity-100 bg-[#F5F5F4] transition-opacity">
+                                  <button 
+                                    onClick={() => setIsDeletingCustomerInvoice(inv)}
+                                    className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-sm transition-colors"
+                                    title="Eliminar Factura"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          {customerInvoices.length === 0 && (
+                            <div className="p-12 text-center text-[10px] opacity-40 italic">No hay facturas registradas</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'Cobros' && (
+                    <div className="space-y-8">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-bold uppercase tracking-widest">Gestión de Cobros Pendientes</h3>
+                        {selectedInvoicesForBatch.length > 0 && (
+                          <button 
+                            onClick={() => {
+                              setIsMultipleLiquidation(true);
+                              setIsBatchLiquidating(true);
+                            }}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-teal-700 transition-all flex items-center gap-2 shadow-lg shadow-teal-600/20"
+                          >
+                            <CreditCard size={14} />
+                            Cobrar Selección ({selectedInvoicesForBatch.length})
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="border border-[#0A0A0A]/10 rounded-sm overflow-hidden">
+                        <div 
+                          className="grid bg-[#F5F5F4] border-b border-[#0A0A0A]/10 text-[9px] font-bold uppercase tracking-widest opacity-50"
+                          style={{ gridTemplateColumns: `40px ${getSupplierGridTemplate(customerInvoicesColumns)}` }}
+                        >
+                          <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedInvoicesForBatch.length === customerInvoices.filter(inv => inv.pending > 0).length && customerInvoices.filter(inv => inv.pending > 0).length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedInvoicesForBatch(customerInvoices.filter(inv => inv.pending > 0).map(inv => inv.id));
+                                } else {
+                                  setSelectedInvoicesForBatch([]);
+                                }
+                              }}
+                            />
+                          </div>
+                          {customerInvoicesColumns.map((col) => (
+                            <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5">{col.label}</div>
+                          ))}
+                        </div>
+                        <div className="divide-y divide-[#0A0A0A]/5 max-h-[400px] overflow-y-auto">
+                          {customerInvoices
+                            .filter(inv => inv.pending > 0)
+                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                            .map((inv) => (
+                              <div 
+                                key={inv.id} 
+                                className="grid hover:bg-[#F5F5F4] transition-colors group"
+                                style={{ gridTemplateColumns: `40px ${getSupplierGridTemplate(customerInvoicesColumns)}` }}
+                              >
+                                <div className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                  <input 
+                                    type="checkbox"
+                                    checked={selectedInvoicesForBatch.includes(inv.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedInvoicesForBatch(prev => [...prev, inv.id]);
+                                      } else {
+                                        setSelectedInvoicesForBatch(prev => prev.filter(id => id !== inv.id));
+                                      }
+                                    }}
+                                  />
+                                </div>
+                                {customerInvoicesColumns.map((col) => {
+                                  if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-mono flex items-center">{inv.doc_id}</div>;
+                                  if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
+                                  if (col.id === 'reference') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] font-bold flex items-center">{inv.reference}</div>;
+                                  if (col.id === 'concept') return (
+                                    <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center overflow-hidden" title={inv.concept}>
+                                      <span className="truncate">{inv.concept || "-"}</span>
+                                    </div>
+                                  );
+                                  if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] text-right font-mono flex items-center justify-end">{formatCurrency(inv.amount)}</div>;
+                                  if (col.id === 'pending') return <div key={col.id} className="p-1 text-[10px] text-right font-mono text-rose-600 font-bold flex items-center justify-end">{formatCurrency(inv.pending)}</div>;
+                                  return null;
+                                })}
+                              </div>
+                            ))}
+                          {customerInvoices.filter(inv => inv.pending > 0).length === 0 && (
+                            <div className="p-8 text-center text-[10px] opacity-40 italic">No hay facturas pendientes</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab !== 'General' && activeTab !== 'Comunicación' && activeTab !== 'Facturación' && activeTab !== 'Cobros' && (
                     <div className="p-12 text-center border border-dashed border-[#0A0A0A]/10 rounded-sm">
                       <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Sección en desarrollo: {activeTab}</p>
                     </div>
