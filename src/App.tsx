@@ -177,6 +177,7 @@ interface NewSupplierProposal {
   phone?: string;
   email: string;
   invoiceData: any;
+  type?: 'purchase' | 'sale';
 }
 
 const formatDate = (dateStr: string) => {
@@ -386,7 +387,7 @@ export default function App() {
     return parts.length > 1 ? parts[parts.length - 1] : id;
   };
 
-  const [view, setView] = useState<'suppliers' | 'customers' | 'upload' | 'supplier-detail' | 'customer-detail' | 'history' | 'customer-history' | 'movements' | 'customer-movements' | 'invoice-document' | 'customer-invoice-document'>('suppliers');
+  const [view, setView] = useState<'suppliers' | 'customers' | 'upload' | 'upload-fv' | 'supplier-detail' | 'customer-detail' | 'history' | 'customer-history' | 'movements' | 'customer-movements' | 'invoice-document' | 'customer-invoice-document'>('suppliers');
   const [expandedSection, setExpandedSection] = useState<'suppliers' | 'customers'>('suppliers');
   const [previousView, setPreviousView] = useState<'movements' | 'customer-movements' | 'supplier-detail' | 'customer-detail' | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -485,16 +486,66 @@ export default function App() {
 
     return found;
   }, [suppliers]);
+
+  const findSimilarCustomers = useCallback((name: string, cif: string) => {
+    if (!name && !cif) return [];
+    
+    const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const numericCif = cif.replace(/\D/g, '');
+
+    const found = customers.filter(c => {
+      // CIF Similarity
+      const cNumericCif = c.cif.replace(/\D/g, '');
+      let cifMatch = false;
+      
+      if (numericCif && cNumericCif) {
+        if (numericCif.length >= 6 && cNumericCif.length >= 6) {
+          if (numericCif.includes(cNumericCif) || cNumericCif.includes(numericCif)) {
+            cifMatch = true;
+          }
+        }
+        
+        if (!cifMatch) {
+          let matches = 0;
+          const minLen = Math.min(numericCif.length, cNumericCif.length);
+          for (let i = 0; i < minLen; i++) {
+            if (numericCif[i] === cNumericCif[i]) matches++;
+          }
+          if (matches >= 7) cifMatch = true;
+        }
+      }
+
+      // Name Similarity
+      const cNormalizedName = c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const cNormalizedAlias = (c.alias || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      const nameMatch = normalizedName.length > 3 && (
+        cNormalizedName.includes(normalizedName) || 
+        normalizedName.includes(cNormalizedName) ||
+        cNormalizedAlias.includes(normalizedName) ||
+        normalizedName.includes(cNormalizedAlias)
+      );
+
+      return cifMatch || nameMatch;
+    });
+
+    if (found.length > 0) {
+      console.log(`%c[SIMILAR CUSTOMERS DETECTED]`, 'background: #fef08a; color: #854d0e; font-weight: bold; padding: 2px 4px; border-radius: 2px;');
+    }
+
+    return found;
+  }, [customers]);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pastedText, setPastedText] = useState("");
 
   const handlePasteProcess = async () => {
     if (!pastedText.trim()) return;
     
+    const type = view === 'upload-fv' ? 'sale' : 'purchase';
     setIsPasteModalOpen(false);
     setIsUploading(true);
     setUploadLog([]);
-    addLogEntry('INFO', 'Iniciando procesamiento de datos pegados...');
+    addLogEntry('INFO', `Iniciando procesamiento de datos pegados (${type === 'purchase' ? 'Compras' : 'Ventas'})...`);
 
     const lines = pastedText.trim().split('\n');
     // Skip header if it looks like one
@@ -513,8 +564,10 @@ export default function App() {
 
       const [identificador, nombreProveedor, nif, numFactura, fechaFactura, importe] = parts;
 
-      // Extract XX-FCXX from identificador
-      const docMatch = identificador.match(/([A-Z0-9]{2}-FC[A-Z0-9]{2})/i);
+      // Extract XX-FCXX or XX-FVXX from identificador
+      const docMatch = type === 'purchase' 
+        ? identificador.match(/([A-Z0-9]{2}-FC[A-Z0-9]{2})/i)
+        : identificador.match(/([A-Z0-9]{2}-FV[A-Z0-9]{2})/i);
       const docId = docMatch ? docMatch[1] : undefined;
 
       // Parse date DD/MM/YYYY -> YYYY-MM-DD
@@ -544,7 +597,8 @@ export default function App() {
         addLogEntry('INFO', `Procesando: ${nombreProveedor} (${nif})`);
 
         // Check for similar NIFs in BBDD to avoid duplicates
-        const similarSupplier = suppliers.find(s => {
+        const entitiesToCheck = type === 'purchase' ? suppliers : customers;
+        const similarEntity = entitiesToCheck.find(s => {
           const sCif = s.cif.trim().toUpperCase();
           const pCif = parsedData.cif;
           // Exact match
@@ -558,18 +612,20 @@ export default function App() {
           return matches >= 7 && Math.abs(sCif.length - pCif.length) <= 1;
         });
 
-        if (similarSupplier && similarSupplier.cif !== parsedData.cif) {
-          addLogEntry('WARNING', `¡Atención! NIF ${parsedData.cif} parecido a ${similarSupplier.cif} (${similarSupplier.name}) detectado.`);
+        if (similarEntity && similarEntity.cif !== parsedData.cif) {
+          addLogEntry('WARNING', `¡Atención! NIF ${parsedData.cif} parecido a ${similarEntity.cif} (${similarEntity.name}) detectado.`);
         }
 
         // Lookup CIF exactly
-        const cifRes = await fetch(`/api/suppliers/cif/${parsedData.cif}?companyId=${activeCompanyId}`);
-        const existingSupplier = await cifRes.json();
+        const endpoint = type === 'purchase' ? '/api/suppliers/cif' : '/api/customers/cif';
+        const cifRes = await fetch(`${endpoint}/${parsedData.cif}?companyId=${activeCompanyId}`);
+        const existingEntity = await cifRes.json();
 
-        if (existingSupplier) {
+        if (existingEntity) {
           // Duplicate check
-          const isDuplicate = allInvoices.some(inv => 
-            (inv.supplier_id === existingSupplier.id && (inv.doc_ext === parsedData.invoiceNumber || inv.invoice_number === parsedData.invoiceNumber)) ||
+          const invoicesToCheck = type === 'purchase' ? allInvoices : allCustomerInvoices;
+          const isDuplicate = invoicesToCheck.some(inv => 
+            ((type === 'purchase' ? inv.supplier_id : (inv as any).customer_id) === existingEntity.id && (inv.doc_ext === parsedData.invoiceNumber || inv.invoice_number === parsedData.invoiceNumber)) ||
             (docId && inv.doc_id === docId)
           );
 
@@ -578,11 +634,17 @@ export default function App() {
             continue;
           }
 
-          await createInvoice(existingSupplier.id, parsedData, "Factura pegada");
-          addLogEntry('SUCCESS', `Factura creada para ${existingSupplier.name}`);
+          if (type === 'purchase') {
+            await createInvoice(existingEntity.id, parsedData, "Factura pegada");
+          } else {
+            await createCustomerInvoice(existingEntity.id, parsedData, "Factura pegada");
+          }
+          addLogEntry('SUCCESS', `Factura creada para ${existingEntity.name}`);
         } else {
-          addLogEntry('INFO', `Proveedor nuevo detectado: ${nombreProveedor}`);
-          const similar = findSimilarSuppliers(nombreProveedor, parsedData.cif);
+          addLogEntry('INFO', `${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado: ${nombreProveedor}`);
+          const similar = type === 'purchase' 
+            ? findSimilarSuppliers(nombreProveedor, parsedData.cif)
+            : findSimilarCustomers(nombreProveedor, parsedData.cif);
           setSimilarSuppliers(similar);
           setProposal({
             name: parsedData.supplierName,
@@ -593,9 +655,10 @@ export default function App() {
             province: "",
             phone: "",
             email: "",
-            invoiceData: parsedData
+            invoiceData: parsedData,
+            type: type
           });
-          // Note: If multiple new suppliers, this will only show the last one.
+          // Note: If multiple new entities, this will only show the last one.
           // In a real app, we'd queue these.
         }
       } catch (err) {
@@ -786,6 +849,7 @@ export default function App() {
   const [invoiceSortField, setInvoiceSortField] = useState<keyof Invoice | null>('issue_date');
   const [invoiceSortDirection, setInvoiceSortDirection] = useState<'asc' | 'desc'>('desc');
   const [historySupplierFilter, setHistorySupplierFilter] = useState<string>("All");
+  const [historyCustomerFilter, setHistoryCustomerFilter] = useState<string>("All");
   const [historyDateFilter, setHistoryDateFilter] = useState<string>("");
   const [movementDateFilter, setMovementDateFilter] = useState<string>("");
 
@@ -842,6 +906,59 @@ export default function App() {
     return result;
   }, [allInvoices, invoiceSortField, invoiceSortDirection, searchQuery, historySupplierFilter, historyDateFilter, systemDate]);
 
+  const filteredAndSortedCustomerInvoices = useMemo(() => {
+    let result = [...allCustomerInvoices];
+
+    // Customer filter
+    if (historyCustomerFilter !== "All") {
+      result = result.filter(inv => (inv as any).customer_id === historyCustomerFilter);
+    }
+
+    // Date filter
+    if (historyDateFilter) {
+      const smartRange = parseSmartDate(historyDateFilter, systemDate);
+      if (smartRange) {
+        if (smartRange.start && smartRange.end) {
+          result = result.filter(inv => inv.issue_date >= smartRange.start! && inv.issue_date <= smartRange.end!);
+        } else if (smartRange.start) {
+          result = result.filter(inv => inv.issue_date >= smartRange.start!);
+        } else if (smartRange.end) {
+          result = result.filter(inv => inv.issue_date <= smartRange.end!);
+        }
+      }
+    }
+
+    // Search filter
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(inv => 
+        (inv.invoice_number || "").toLowerCase().includes(q) ||
+        inv.doc_id?.toLowerCase().includes(q) ||
+        inv.doc_ext?.toLowerCase().includes(q) ||
+        (inv as any).customer_name?.toLowerCase().includes(q) ||
+        (inv as any).customer_alias?.toLowerCase().includes(q) ||
+        inv.concept?.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    if (invoiceSortField) {
+      result.sort((a, b) => {
+        const valA = a[invoiceSortField];
+        const valB = b[invoiceSortField];
+
+        if (valA === undefined || valA === null) return 1;
+        if (valB === undefined || valB === null) return -1;
+
+        if (valA < valB) return invoiceSortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return invoiceSortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [allCustomerInvoices, invoiceSortField, invoiceSortDirection, searchQuery, historyCustomerFilter, historyDateFilter, systemDate]);
+
   const invoiceTotals = useMemo(() => {
     return filteredAndSortedInvoices.reduce((acc, inv) => {
       acc.total += (inv.total_amount || 0);
@@ -849,6 +966,14 @@ export default function App() {
       return acc;
     }, { total: 0, base: 0 });
   }, [filteredAndSortedInvoices]);
+
+  const customerInvoiceTotals = useMemo(() => {
+    return filteredAndSortedCustomerInvoices.reduce((acc, inv) => {
+      acc.total += (inv.total_amount || 0);
+      acc.base += (inv.tax_base || 0);
+      return acc;
+    }, { total: 0, base: 0 });
+  }, [filteredAndSortedCustomerInvoices]);
 
   const allGroupedInvoices = useMemo(() => {
     const invoices = movements.filter(m => m.type === 'Alta Factura');
@@ -867,6 +992,24 @@ export default function App() {
       };
     });
   }, [movements]);
+
+  const allGroupedCustomerInvoices = useMemo(() => {
+    const invoices = customerMovements.filter(m => m.type === 'Alta Factura');
+    const allPayments = customerMovements.filter(m => m.type === 'Cobro Factura');
+
+    return invoices.map(inv => {
+      const invPayments = allPayments.filter(p => p.doc_id === inv.doc_id);
+      const totalPaid = invPayments.reduce((sum, p) => sum + p.amount, 0);
+      const pending = Math.round((inv.amount - totalPaid) * 100) / 100;
+      const status = pending <= 0 ? 'COBRADA' : 'PENDIENTE';
+      return {
+        ...inv,
+        pending,
+        status,
+        payments: invPayments
+      };
+    });
+  }, [customerMovements]);
 
   const groupedInvoices = useMemo(() => {
     let result = [...allGroupedInvoices];
@@ -923,6 +1066,76 @@ export default function App() {
 
     return result;
   }, [allGroupedInvoices, movementsFilterSupplierId, movementDateFilter, systemDate, searchQuery, movementSortField, movementSortDirection]);
+
+  const groupedCustomerInvoices = useMemo(() => {
+    let result = [...allGroupedCustomerInvoices];
+
+    // Filter by Customer
+    if (movementsFilterCustomerId) {
+      result = result.filter(inv => (inv as any).customer_id === movementsFilterCustomerId);
+    }
+
+    // Filter by Date
+    if (movementDateFilter) {
+      const smartRange = parseSmartDate(movementDateFilter, systemDate);
+      if (smartRange) {
+        if (smartRange.start && smartRange.end) {
+          result = result.filter(m => m.date >= smartRange.start! && m.date <= smartRange.end!);
+        } else if (smartRange.start) {
+          result = result.filter(m => m.date >= smartRange.start!);
+        } else if (smartRange.end) {
+          result = result.filter(m => m.date <= smartRange.end!);
+        }
+      }
+    }
+
+    // Search Filter
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(inv => 
+        inv.doc_id?.toLowerCase().includes(q) ||
+        inv.doc_ext?.toLowerCase().includes(q) ||
+        (inv as any).customer_id?.toLowerCase().includes(q) ||
+        (inv as any).customer_name?.toLowerCase().includes(q) ||
+        (inv as any).customer_alias?.toLowerCase().includes(q) ||
+        inv.concept?.toLowerCase().includes(q) ||
+        (inv.status || "").toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    if (movementSortField) {
+      result.sort((a, b) => {
+        // @ts-ignore
+        const valA = a[movementSortField];
+        // @ts-ignore
+        const valB = b[movementSortField];
+
+        if (valA === undefined || valA === null) return 1;
+        if (valB === undefined || valB === null) return -1;
+
+        if (valA < valB) return movementSortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return movementSortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [allGroupedCustomerInvoices, movementsFilterCustomerId, movementDateFilter, systemDate, searchQuery, movementSortField, movementSortDirection]);
+
+  const selectedBatchTotal = useMemo(() => {
+    if (selectedInvoicesForBatch.length === 0) return 0;
+    if (view === 'supplier-detail') {
+      return groupedInvoices
+        .filter(inv => selectedInvoicesForBatch.includes(inv.id))
+        .reduce((sum, inv) => sum + inv.pending, 0);
+    } else if (view === 'customer-detail') {
+      return customerInvoices
+        .filter(inv => selectedInvoicesForBatch.includes(inv.id))
+        .reduce((sum, inv) => sum + inv.pending, 0);
+    }
+    return 0;
+  }, [selectedInvoicesForBatch, groupedInvoices, customerInvoices, view]);
 
   const handleMovementSort = (field: string) => {
     if (movementSortField === field) {
@@ -1093,8 +1306,11 @@ export default function App() {
       if (view === 'movements' && !movementsFilterSupplierId) {
         fetchAllMovements();
       }
+      if (view === 'customer-movements' && !movementsFilterCustomerId) {
+        fetchAllCustomerMovements();
+      }
     }
-  }, [activeCompanyId, fetchData, view, movementsFilterSupplierId]);
+  }, [activeCompanyId, fetchData, view, movementsFilterSupplierId, movementsFilterCustomerId]);
 
   const fetchDbStatus = async () => {
     setIsRefreshingDb(true);
@@ -1299,13 +1515,13 @@ export default function App() {
     setUserDeleteCodeInput("");
   };
 
-  const processFiles = async (files: FileList | File[], targetSupplier?: Supplier) => {
+  const processFiles = async (files: FileList | File[], targetEntity?: Supplier | Customer, type: 'purchase' | 'sale' = 'purchase') => {
     setIsUploading(true);
     setUploadError(null);
     setUploadLog([]); // Clear previous log
     const sessionInvoices = new Set<string>();
 
-    addLogEntry('INFO', `Iniciando procesamiento de ${files.length} archivos...`);
+    addLogEntry('INFO', `Iniciando procesamiento de ${files.length} archivos (${type === 'purchase' ? 'Compras' : 'Ventas'})...`);
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1326,9 +1542,9 @@ export default function App() {
           addLogEntry('INFO', `${file.name}: DOC ID extraído del nombre: ${docId}`);
         }
 
-        // Validation for specific supplier dropzone
-        if (targetSupplier && parsed.cif !== targetSupplier.cif) {
-          const msg = `Error: La factura pertenece al CIF ${parsed.cif}, pero estás en la ficha de ${targetSupplier.name} (${targetSupplier.cif}).`;
+        // Validation for specific entity dropzone
+        if (targetEntity && parsed.cif !== targetEntity.cif) {
+          const msg = `Error: La factura pertenece al CIF ${parsed.cif}, pero estás en la ficha de ${targetEntity.name} (${targetEntity.cif}).`;
           setUploadError(msg);
           addLogEntry('ERROR', `${file.name}: ${msg}`);
           continue;
@@ -1346,34 +1562,45 @@ export default function App() {
         if (docId) sessionInvoices.add(`DOC-${docId}`);
 
         // Lookup CIF
-        const cifRes = await fetch(`/api/suppliers/cif/${parsed.cif}?companyId=${activeCompanyId}`);
-        const existingSupplier = await cifRes.json();
+        const endpoint = type === 'purchase' ? '/api/suppliers/cif' : '/api/customers/cif';
+        const cifRes = await fetch(`${endpoint}/${parsed.cif}?companyId=${activeCompanyId}`);
+        const existingEntity = await cifRes.json();
 
-        if (existingSupplier) {
+        if (existingEntity) {
           // Client-side duplicate check against DB
-          const isDuplicate = allInvoices.some(inv => 
-            (inv.supplier_id === existingSupplier.id && (inv.doc_ext === parsed.invoiceNumber || inv.invoice_number === parsed.invoiceNumber)) ||
+          const invoicesToCheck = type === 'purchase' ? allInvoices : allCustomerInvoices;
+          const isDuplicate = invoicesToCheck.some(inv => 
+            ((type === 'purchase' ? inv.supplier_id : (inv as any).customer_id) === existingEntity.id && (inv.doc_ext === parsed.invoiceNumber || inv.invoice_number === parsed.invoiceNumber)) ||
             (docId && inv.doc_id === docId)
           );
 
           if (isDuplicate) {
-            const duplicateType = allInvoices.some(inv => docId && inv.doc_id === docId) ? `DOC (Int): ${docId}` : `Nº: ${parsed.invoiceNumber}`;
+            const duplicateType = invoicesToCheck.some(inv => docId && inv.doc_id === docId) ? `DOC (Int): ${docId}` : `Nº: ${parsed.invoiceNumber}`;
             const msg = `Factura duplicada detectada (${duplicateType})`;
             setUploadError(msg);
             addLogEntry('DUPLICATE', `${file.name}: ${msg}`);
             continue;
           }
 
-          await createInvoice(existingSupplier.id, { ...parsed, docId }, "Factura genérica");
-          addLogEntry('SUCCESS', `${file.name}: Procesada correctamente para ${existingSupplier.name}`);
-          if (selectedSupplier?.id === existingSupplier.id) {
-            fetchSupplierDetails(existingSupplier.id);
+          if (type === 'purchase') {
+            await createInvoice(existingEntity.id, { ...parsed, docId }, "Factura genérica");
+          } else {
+            await createCustomerInvoice(existingEntity.id, { ...parsed, docId }, "Factura de venta");
+          }
+          
+          addLogEntry('SUCCESS', `${file.name}: Procesada correctamente para ${existingEntity.name}`);
+          if (type === 'purchase' && selectedSupplier?.id === existingEntity.id) {
+            fetchSupplierDetails(existingEntity.id);
+          } else if (type === 'sale' && selectedCustomer?.id === existingEntity.id) {
+            fetchCustomerDetails(existingEntity.id);
           }
         } else {
-          addLogEntry('INFO', `${file.name}: Proveedor nuevo detectado (${parsed.supplierName})`);
+          addLogEntry('INFO', `${file.name}: ${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado (${parsed.supplierName})`);
           setUseGenericInProposal(false);
           setProposalConcept("");
-          const similar = findSimilarSuppliers(parsed.supplierName, parsed.cif);
+          const similar = type === 'purchase' 
+            ? findSimilarSuppliers(parsed.supplierName, parsed.cif)
+            : findSimilarCustomers(parsed.supplierName, parsed.cif);
           setSimilarSuppliers(similar);
           setProposal({
             name: parsed.supplierName,
@@ -1385,7 +1612,8 @@ export default function App() {
             province: parsed.province,
             phone: parsed.phone,
             email: parsed.email,
-            invoiceData: { ...parsed, docId }
+            invoiceData: { ...parsed, docId },
+            type: type // Add type to proposal
           });
         }
       } catch (err) {
@@ -1401,10 +1629,36 @@ export default function App() {
     addLogEntry('INFO', "Procesamiento finalizado.");
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetSupplier?: Supplier) => {
+  const createCustomerInvoice = async (customerId: string, data: any, concept?: string) => {
+    if (!activeCompanyId) return;
+    const res = await fetch("/api/customer-invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company_id: activeCompanyId,
+        customer_id: customerId,
+        doc_id: data.docId || `FV-${data.invoiceNumber || Date.now()}`,
+        doc_ext: data.invoiceNumber,
+        invoice_number: data.invoiceNumber || "S/N",
+        issue_date: data.issueDate || format(new Date(), "yyyy-MM-dd"),
+        due_date: data.dueDate,
+        tax_base: data.taxBase || 0,
+        vat: data.vat || 0,
+        total_amount: data.totalAmount || 0,
+        concept: concept || "Factura de venta"
+      })
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Error al crear la factura de venta");
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetEntity?: Supplier | Customer, type: 'purchase' | 'sale' = 'purchase') => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    await processFiles(files, targetSupplier);
+    await processFiles(files, targetEntity, type);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -1417,12 +1671,12 @@ export default function App() {
     setIsDragging(false);
   };
 
-  const handleDrop = async (e: React.DragEvent, targetSupplier?: Supplier) => {
+  const handleDrop = async (e: React.DragEvent, targetEntity?: Supplier | Customer, type: 'purchase' | 'sale' = 'purchase') => {
     e.preventDefault();
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      await processFiles(files, targetSupplier);
+      await processFiles(files, targetEntity, type);
     }
   };
 
@@ -1452,11 +1706,16 @@ export default function App() {
     }
   };
 
-  const handleAssociateSimilarSupplier = async (supplierId: string) => {
+  const handleAssociateSimilarEntity = async (entityId: string) => {
     if (!proposal) return;
+    const type = proposal.type || 'purchase';
     setIsUploading(true);
     try {
-      await createInvoice(supplierId, proposal.invoiceData, proposalConcept || "Factura genérica");
+      if (type === 'purchase') {
+        await createInvoice(entityId, proposal.invoiceData, proposalConcept || "Factura genérica");
+      } else {
+        await createCustomerInvoice(entityId, proposal.invoiceData, proposalConcept || "Factura de venta");
+      }
       setProposal(null);
       setSimilarSuppliers([]);
       setUseGenericInProposal(false);
@@ -1469,24 +1728,28 @@ export default function App() {
     }
   };
 
-  const handleCreateSupplier = async () => {
+  const handleCreateEntity = async () => {
     if (!proposal || !activeCompanyId) return;
+    const type = proposal.type || 'purchase';
     setIsUploading(true);
     setUploadError(null);
 
     try {
-      let supplierId = "";
-      let finalConcept = proposalConcept || "Factura genérica";
+      let entityId = "";
+      let finalConcept = proposalConcept || (type === 'purchase' ? "Factura genérica" : "Factura de venta");
 
       if (useGenericInProposal) {
-        // Use the generic supplier for this company
-        if (!genericSupplier) {
-          throw new Error("No existe un proveedor genérico configurado para esta empresa. Por favor, marca uno en la ficha de proveedor.");
+        if (type === 'purchase') {
+          if (!genericSupplier) throw new Error("No existe un proveedor genérico configurado.");
+          entityId = genericSupplier.id;
+        } else {
+          if (!genericCustomer) throw new Error("No existe un cliente genérico configurado.");
+          entityId = genericCustomer.id;
         }
-        supplierId = genericSupplier.id;
-        if (!proposalConcept) finalConcept = "Gasto esporádico";
+        if (!proposalConcept) finalConcept = type === 'purchase' ? "Gasto esporádico" : "Venta esporádica";
       } else {
-        const res = await fetch("/api/suppliers", {
+        const endpoint = type === 'purchase' ? "/api/suppliers" : "/api/customers";
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1499,35 +1762,48 @@ export default function App() {
             zip_code: proposal.zip_code,
             province: proposal.province,
             phone: proposal.phone,
-            email: proposal.email
+            email: proposal.email,
+            is_generic: 0
           })
         });
         
         if (!res.ok) {
           const errorData = await res.json();
-          throw new Error(errorData.error || "Error al crear el proveedor");
+          throw new Error(errorData.error || `Error al crear el ${type === 'purchase' ? 'proveedor' : 'cliente'}`);
         }
 
         const data = await res.json();
-        supplierId = data.id;
+        entityId = data.id;
       }
       
-      await createInvoice(supplierId, proposal.invoiceData, finalConcept);
+      if (type === 'purchase') {
+        await createInvoice(entityId, proposal.invoiceData, finalConcept);
+      } else {
+        await createCustomerInvoice(entityId, proposal.invoiceData, finalConcept);
+      }
+
       setProposal(null);
       setUseGenericInProposal(false);
       setProposalConcept("");
       await fetchData();
       
       if (!useGenericInProposal) {
-        // Navigate to the new supplier detail view
-        const sRes = await fetch(`/api/suppliers/${supplierId}?companyId=${activeCompanyId}`);
-        const sData = await sRes.json();
-        setSelectedSupplier(sData);
-        setView('supplier-detail');
-        fetchSupplierDetails(supplierId);
+        if (type === 'purchase') {
+          const sRes = await fetch(`/api/suppliers/${entityId}?companyId=${activeCompanyId}`);
+          const sData = await sRes.json();
+          setSelectedSupplier(sData);
+          setView('supplier-detail');
+          fetchSupplierDetails(entityId);
+        } else {
+          const cRes = await fetch(`/api/customers/${entityId}?companyId=${activeCompanyId}`);
+          const cData = await cRes.json();
+          setSelectedCustomer(cData);
+          setView('customer-detail');
+          fetchCustomerDetails(entityId);
+        }
       }
     } catch (err) {
-      console.error("Error in handleCreateSupplier:", err);
+      console.error("Error in handleCreateEntity:", err);
       setUploadError(err instanceof Error ? err.message : "Error al procesar la solicitud");
     } finally {
       setIsUploading(false);
@@ -2356,6 +2632,15 @@ export default function App() {
                     )}
                   >
                     Maestro
+                  </button>
+                  <button 
+                    onClick={() => setView('upload-fv')}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-sm text-[9px] font-bold uppercase tracking-widest transition-all",
+                      view === 'upload-fv' ? "text-violet-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]"
+                    )}
+                  >
+                    Alta FV
                   </button>
                   <button 
                     onClick={() => setView('customer-movements')}
@@ -3343,19 +3628,22 @@ export default function App() {
                           </button>
                         </div>
                         {selectedInvoicesForBatch.length > 0 && (
-                          <button 
-                            onClick={() => {
-                              const total = groupedInvoices
-                                .filter(inv => selectedInvoicesForBatch.includes(inv.id))
-                                .reduce((sum, inv) => sum + inv.pending, 0);
-                              setPaymentAmount(total.toFixed(2));
-                              setIsBatchLiquidating(true);
-                            }}
-                            className="px-4 py-2 bg-[#0A0A0A] text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors flex items-center gap-2"
-                          >
-                            <Euro size={14} />
-                            Liquidar Seleccionadas ({selectedInvoicesForBatch.length})
-                          </button>
+                          <div className="flex items-center gap-4">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] font-bold text-[#0A0A0A]/30 uppercase tracking-widest">Importe Seleccionado</span>
+                              <span className="text-[11px] font-bold text-[#0A0A0A]/50">{formatCurrency(selectedBatchTotal)}</span>
+                            </div>
+                            <button 
+                              onClick={() => {
+                                setPaymentAmount(selectedBatchTotal.toFixed(2));
+                                setIsBatchLiquidating(true);
+                              }}
+                              className="px-4 py-2 bg-[#0A0A0A] text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-colors flex items-center gap-2"
+                            >
+                              <Euro size={14} />
+                              Liquidar Seleccionadas ({selectedInvoicesForBatch.length})
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -3768,16 +4056,23 @@ export default function App() {
                       <div className="flex justify-between items-center">
                         <h3 className="text-sm font-bold uppercase tracking-widest">Gestión de Cobros Pendientes</h3>
                         {selectedInvoicesForBatch.length > 0 && (
-                          <button 
-                            onClick={() => {
-                              setIsMultipleLiquidation(true);
-                              setIsBatchLiquidating(true);
-                            }}
-                            className="px-4 py-2 bg-teal-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-teal-700 transition-all flex items-center gap-2 shadow-lg shadow-teal-600/20"
-                          >
-                            <CreditCard size={14} />
-                            Cobrar Selección ({selectedInvoicesForBatch.length})
-                          </button>
+                          <div className="flex items-center gap-4">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] font-bold text-[#0A0A0A]/30 uppercase tracking-widest">Importe Seleccionado</span>
+                              <span className="text-[11px] font-bold text-[#0A0A0A]/50">{formatCurrency(selectedBatchTotal)}</span>
+                            </div>
+                            <button 
+                              onClick={() => {
+                                setPaymentAmount(selectedBatchTotal.toFixed(2));
+                                setIsMultipleLiquidation(true);
+                                setIsBatchLiquidating(true);
+                              }}
+                              className="px-4 py-2 bg-teal-600 text-white rounded-sm text-[9px] font-bold uppercase tracking-widest hover:bg-teal-700 transition-all flex items-center gap-2 shadow-lg shadow-teal-600/20"
+                            >
+                              <CreditCard size={14} />
+                              Cobrar Selección ({selectedInvoicesForBatch.length})
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -4155,6 +4450,302 @@ export default function App() {
             </motion.div>
           )}
 
+          {view === 'customer-movements' && (
+            <motion.div 
+              key="customer-movements"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-6xl mx-auto"
+            >
+              <div className="flex justify-between items-end mb-8">
+                  <div>
+                    <div className="flex items-center gap-4">
+                      {movementsFilterCustomerId && (
+                        <button 
+                          onClick={() => {
+                            const customer = customers.find(c => c.id === movementsFilterCustomerId);
+                            if (customer) {
+                              setSelectedCustomer(customer);
+                              setView('customer-detail');
+                            }
+                          }}
+                          className="w-10 h-10 bg-white ring-1 ring-[#0A0A0A]/10 rounded-xl flex items-center justify-center hover:bg-[#F5F5F4] transition-all shadow-sm"
+                        >
+                          <ArrowLeft size={20} />
+                        </button>
+                      )}
+                      <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Movimientos Cliente</h2>
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40 mt-2">
+                      {movementsFilterCustomerId 
+                        ? `Filtrado por: [${formatSupplierId(movementsFilterCustomerId)}] ${customers.find(c => c.id === movementsFilterCustomerId)?.name}` 
+                        : "Todos los movimientos registrados"}
+                    </p>
+                  </div>
+                <div className="flex gap-3 items-end">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Cliente</label>
+                    <select 
+                      value={movementsFilterCustomerId || "All"}
+                      onChange={(e) => {
+                        const val = e.target.value === "All" ? null : e.target.value;
+                        setMovementsFilterCustomerId(val);
+                        setSearchQuery(""); // Clear search when changing customer
+                        if (val) fetchCustomerDetails(val);
+                        else fetchAllCustomerMovements();
+                      }}
+                      className="px-3 py-2 bg-white border border-[#0A0A0A]/10 rounded-sm text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#0A0A0A] transition-all w-48"
+                    >
+                      <option value="All">TODOS LOS CLIENTES</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>{formatSupplierId(c.id)} - {c.name.toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Filtro Fecha (D, M, A, T, D-M..)</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="Ej: T, M, 15..M4"
+                        value={movementDateFilter}
+                        onChange={(e) => setMovementDateFilter(e.target.value)}
+                        className="pl-10 pr-4 py-2 bg-white border border-[#0A0A0A]/10 rounded-sm text-[10px] font-bold outline-none focus:border-[#0A0A0A] transition-all w-48"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="BUSCAR (DOC, CLIENTE, ESTADO...)" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none text-[10px] font-bold uppercase tracking-widest focus:border-[#0A0A0A] transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30">
+                  {groupedCustomerInvoices.length} movimientos encontrados
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setMovementColumns)}
+                >
+                  <div 
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
+                  >
+                    <SortableContext items={movementColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {movementColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label === 'Proveedor' ? 'Cliente' : col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={{ key: movementSortField, direction: movementSortDirection }}
+                          onSort={handleMovementSort}
+                          isLast={idx === movementColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                    <div className="p-1 text-center">Acc.</div>
+                  </div>
+                </DndContext>
+
+                <div className="divide-y divide-[#0A0A0A]/5">
+                  {groupedCustomerInvoices.map(inv => {
+                    const isExpanded = expandedInvoiceId === inv.doc_id;
+
+                    return (
+                      <React.Fragment key={`group-${inv.id}`}>
+                          <div 
+                            onClick={() => setExpandedInvoiceId(isExpanded ? null : (inv.doc_id || null))}
+                            className={cn(
+                              "grid w-full bg-white hover:bg-[#F5F5F4]/50 transition-colors text-left cursor-pointer",
+                              isExpanded && "bg-[#F5F5F4]/30"
+                            )}
+                            style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
+                          >
+                            {movementColumns.map((col) => {
+                              if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
+                              if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
+                              if (col.id === 'type') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedInvoiceId(inv.id);
+                                        setPreviousView('customer-movements');
+                                        setView('customer-invoice-document');
+                                      }}
+                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-indigo-200 transition-colors"
+                                    >
+                                      Factura
+                                    </button>
+                                </div>
+                              );
+                              if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{formatSupplierId((inv as any).customer_id)}</div>;
+                              if (col.id === 'supplier_name') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center truncate uppercase tracking-tight font-bold">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const customer = customers.find(c => c.id === (inv as any).customer_id);
+                                      if (customer) {
+                                        setSelectedCustomer(customer);
+                                        setMovementsFilterCustomerId(customer.id);
+                                        fetchCustomerDetails(customer.id);
+                                        setView('customer-detail');
+                                      }
+                                    }}
+                                    className="hover:underline text-left truncate"
+                                  >
+                                    {(inv as any).customer_alias || (inv as any).customer_name}
+                                  </button>
+                                </div>
+                              );
+                              if (col.id === 'concept') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center overflow-hidden" title={inv.concept}>
+                                  <span className="truncate">{inv.concept || "-"}</span>
+                                </div>
+                              );
+                              if (col.id === 'amount') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end">
+                                  {formatCurrency(inv.amount)}
+                                </div>
+                              );
+                              if (col.id === 'pending') return (
+                                <div key={col.id} className={cn(
+                                  "p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[10px] flex items-center justify-end",
+                                  inv.pending > 0 ? "text-rose-600 font-bold" : "text-teal-600 opacity-40"
+                                )}>
+                                  {formatCurrency(inv.pending)}
+                                </div>
+                              );
+                              if (col.id === 'status') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                  <span className={cn(
+                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
+                                    inv.status === 'COBRADA' ? "bg-teal-100 text-teal-700" : "bg-rose-100 text-rose-700"
+                                  )}>
+                                    {inv.status}
+                                  </span>
+                                </div>
+                              );
+                              if (col.id === 'payments') return (
+                                <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[10px] font-bold opacity-40 flex items-center justify-center gap-1">
+                                  {inv.payments.length > 0 ? (
+                                    <>
+                                      <CreditCard size={10} />
+                                      {inv.payments.length}
+                                    </>
+                                  ) : "-"}
+                                </div>
+                              );
+                              return null;
+                            })}
+                            <div className="p-1 flex items-center justify-center gap-2">
+                              {inv.pending > 0 && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsLiquidating({
+                                      id: inv.id,
+                                      invoice_number: inv.reference,
+                                      doc_id: inv.doc_id || "",
+                                      supplier_id: (inv as any).customer_id || "",
+                                      total_amount: inv.amount,
+                                      paid_amount: inv.amount - inv.pending
+                                    });
+                                    setIsMultipleLiquidation(false);
+                                    setSelectedInvoicesForBatch([inv.id]);
+                                    setPaymentAmount(inv.pending.toFixed(2));
+                                  }}
+                                  className="p-1 bg-[#0A0A0A] text-white rounded-sm hover:bg-[#1A1A1A] transition-colors"
+                                  title="Cobrar Factura"
+                                >
+                                  <Euro size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <AnimatePresence>
+                            {isExpanded && inv.payments.length > 0 && (
+                              <motion.div 
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden bg-[#F5F5F4]/20"
+                              >
+                                {inv.payments.map(p => (
+                                  <div 
+                                    key={`pay-${p.id}`} 
+                                    className="grid w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0"
+                                    style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
+                                  >
+                                    {movementColumns.map((col) => {
+                                      if (col.id === 'date') return <div key={col.id} className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>;
+                                      if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
+                                      if (col.id === 'type') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
+                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Cobro</span>
+                                        </div>
+                                      );
+                                      if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
+                                      if (col.id === 'supplier_name') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[9px] flex items-center truncate uppercase tracking-widest">
+                                          <ArrowRight size={10} className="mr-2 opacity-40" />
+                                          COBRO: {p.bank_movement_id || p.reference}
+                                        </div>
+                                      );
+                                      if (col.id === 'amount') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end opacity-20">---</div>;
+                                      if (col.id === 'pending') return (
+                                        <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-right font-mono text-[9px] flex items-center justify-end text-sky-600 font-bold">
+                                          {formatCurrency(p.amount)}
+                                        </div>
+                                      );
+                                      if (col.id === 'status') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20 flex items-center justify-center">---</div>;
+                                      if (col.id === 'payments') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-center text-[9px] opacity-20 flex items-center justify-center">---</div>;
+                                      return null;
+                                    })}
+                                    <div className="p-1 text-center text-[9px] flex items-center justify-center">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsDeletingPayment(p.id);
+                                        }}
+                                        className="text-rose-600 hover:text-rose-800 transition-colors"
+                                        title="Eliminar Cobro"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </React.Fragment>
+                      );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {view === 'history' && (
             <motion.div 
               key="history"
@@ -4369,6 +4960,220 @@ export default function App() {
             </motion.div>
           )}
 
+          {view === 'customer-history' && (
+            <motion.div 
+              key="customer-history"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-6xl mx-auto"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Histórico de Facturas de Venta</h2>
+                  <p className="text-xs font-bold uppercase tracking-widest opacity-40">Registro global de todas las facturas emitidas.</p>
+                </div>
+                <div className="flex gap-3 items-end">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Cliente</label>
+                    <select 
+                      value={historyCustomerFilter}
+                      onChange={(e) => setHistoryCustomerFilter(e.target.value)}
+                      className="px-3 py-2 bg-white border border-[#0A0A0A]/10 rounded-sm text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#0A0A0A] transition-all"
+                    >
+                      <option value="All">Todos los clientes</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Filtro Fecha (D, D-M, D-M-Y, A25, M3-25, M1..M3)</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="Ej: 5, 3-2, A25, M3-25, M1..M3"
+                        value={historyDateFilter}
+                        onChange={(e) => setHistoryDateFilter(e.target.value)}
+                        className="pl-10 pr-4 py-2 bg-white border border-[#0A0A0A]/10 rounded-sm text-[10px] font-bold outline-none focus:border-[#0A0A0A] transition-all w-64"
+                      />
+                    </div>
+                  </div>
+                  <div className="relative w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="BUSCAR EN HISTÓRICO..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white rounded-sm border border-[#0A0A0A]/10 outline-none text-[10px] font-bold uppercase tracking-widest focus:border-[#0A0A0A] transition-all"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => fetchData()} 
+                    className="px-6 py-2 bg-[#0A0A0A] text-white rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all flex items-center gap-2"
+                  >
+                    <Filter size={14} />
+                    Filtrar
+                  </button>
+                  <button 
+                    onClick={exportHistoryToTSV}
+                    className="px-6 py-2 bg-white border border-[#0A0A0A]/10 text-[#0A0A0A] rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-[#F5F5F4] transition-all flex items-center gap-2"
+                  >
+                    <Download size={14} />
+                    Exportar TSV
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-2 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A]/30 flex items-center gap-2">
+                  <span>{filteredAndSortedCustomerInvoices.length} registros encontrados</span>
+                  <span className="text-[#0A0A0A] opacity-60">
+                    (Total: {formatCurrency(customerInvoiceTotals.total)})
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#0A0A0A]/10 rounded-sm overflow-hidden shadow-sm">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, setHistoryColumns)}
+                >
+                  <div 
+                    className="grid border-b border-[#0A0A0A]/10 bg-[#F5F5F4] text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    style={{ gridTemplateColumns: getHistoryGridTemplate(historyColumns) }}
+                  >
+                    <SortableContext items={historyColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+                      {historyColumns.map((col, idx) => (
+                        <SortableHeader 
+                          key={col.id}
+                          id={col.id}
+                          label={col.label === 'Proveedor' ? 'Cliente' : col.label}
+                          sortKey={col.sortKey}
+                          sortConfig={{ key: invoiceSortField, direction: invoiceSortDirection }}
+                          onSort={handleInvoiceSort}
+                          isLast={idx === historyColumns.length - 1}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+                <div className="divide-y divide-[#0A0A0A]/5">
+                  {filteredAndSortedCustomerInvoices.map(inv => (
+                    <div 
+                      key={inv.id} 
+                      className="grid w-full hover:bg-[#F5F5F4]/50 transition-colors group"
+                      style={{ gridTemplateColumns: getHistoryGridTemplate(historyColumns) }}
+                    >
+                      {historyColumns.map((col) => {
+                        if (col.id === 'doc_id') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] font-bold flex items-center">
+                            <button 
+                              onClick={() => {
+                                setSelectedInvoiceId(inv.id);
+                                setPreviousView('customer-detail');
+                                setView('customer-invoice-document');
+                              }}
+                              className="hover:underline text-left"
+                            >
+                              {inv.doc_id || "-"}
+                            </button>
+                          </div>
+                        );
+                        if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_ext || "-"}</div>;
+                        if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{formatSupplierId((inv as any).customer_id)}</div>;
+                        if (col.id === 'supplier_name') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center">
+                            <button 
+                              onClick={() => {
+                                const customer = customers.find(c => c.id === (inv as any).customer_id);
+                                if (customer) {
+                                  setSelectedCustomer(customer);
+                                  fetchCustomerDetails(customer.id);
+                                  setView('customer-detail');
+                                }
+                              }}
+                              className="flex flex-col text-left hover:underline"
+                            >
+                              <span className="font-bold text-[11px] tracking-tight">{toTitleCase((inv as any).customer_name || "")}</span>
+                              <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{(inv as any).customer_alias}</span>
+                            </button>
+                          </div>
+                        );
+                        if (col.id === 'issue_date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] opacity-60 flex items-center">{formatDate(inv.issue_date)}</div>;
+                        if (col.id === 'concept') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">
+                            {editingInvoiceConceptId === inv.id ? (
+                              <input 
+                                autoFocus
+                                value={editingConceptValue}
+                                onChange={(e) => setEditingConceptValue(e.target.value)}
+                                onBlur={() => handleUpdateInvoiceConcept(inv.id, editingConceptValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateInvoiceConcept(inv.id, editingConceptValue);
+                                  if (e.key === 'Escape') setEditingInvoiceConceptId(null);
+                                }}
+                                className="w-full px-2 py-1 bg-[#F5F5F4] rounded-sm border-none outline-none font-medium"
+                              />
+                            ) : (
+                              <div 
+                                onClick={() => {
+                                  setEditingInvoiceConceptId(inv.id);
+                                  setEditingConceptValue(inv.concept || "");
+                                }}
+                                className="cursor-pointer hover:bg-[#0A0A0A]/5 px-1 py-0.5 rounded-sm transition-colors truncate max-w-[200px]"
+                                title={inv.concept || "Sin concepto"}
+                              >
+                                {inv.concept || <span className="opacity-30 italic">Sin concepto</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                        if (col.id === 'total_amount') return (
+                          <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[11px] font-bold text-right flex items-center justify-end">
+                            {formatCurrency(inv.total_amount ?? 0)}
+                          </div>
+                        );
+                        if (col.id === 'status') return (
+                          <div key={col.id} className="p-1 text-center flex items-center justify-center">
+                            <span className={cn(
+                              "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm",
+                              inv.status === 'Paid' ? "bg-teal-100 text-teal-700" : 
+                              inv.status === 'Partial' ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"
+                            )}>
+                              {inv.status === 'Paid' ? 'COBRADA' : 
+                               inv.status === 'Partial' ? 'PARCIAL' : 'PENDIENTE'}
+                            </span>
+                          </div>
+                        );
+                        if (col.id === 'actions') return (
+                          <div key={col.id} className="p-1 flex items-center justify-center gap-2">
+                            {(inv.paid_amount || 0) === 0 && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsDeletingInvoice(inv);
+                                }}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded-sm transition-colors"
+                                title="Eliminar Factura"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                        return null;
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {view === 'upload' && (
             <motion.div 
               key="upload"
@@ -4386,7 +5191,7 @@ export default function App() {
                 <label 
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e)}
+                  onDrop={(e) => handleDrop(e, undefined, 'purchase')}
                   className={cn(
                     "flex flex-col items-center justify-center w-full h-80 border-2 border-dashed rounded-[32px] cursor-pointer transition-all group",
                     isDragging ? "border-[#0A0A0A] bg-[#F5F5F4] scale-[1.01]" : "border-[#0A0A0A]/10 hover:bg-[#F5F5F4] hover:border-[#0A0A0A]/20"
@@ -4409,7 +5214,7 @@ export default function App() {
                     type="file" 
                     className="hidden" 
                     multiple 
-                    onChange={(e) => handleFileUpload(e)} 
+                    onChange={(e) => handleFileUpload(e, undefined, 'purchase')} 
                     accept="image/*,application/pdf" 
                   />
                 </label>
@@ -4437,6 +5242,108 @@ export default function App() {
                       <UserPlus size={16} className="opacity-40" />
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest opacity-40">Nuevos Proveedores</p>
+                    <p className="text-sm font-medium leading-tight">Propuesta de alta si el CIF no existe en el sistema.</p>
+                  </div>
+                </div>
+
+                {uploadLog.length > 0 && (
+                  <div className="w-full mt-4 bg-[#0A0A0A] rounded-2xl p-6 font-mono text-[10px] leading-relaxed overflow-hidden border border-white/10 shadow-2xl">
+                    <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <p className="text-green-500 font-bold tracking-widest uppercase">System Log // Matrix Protocol</p>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                      {uploadLog.map((log, idx) => (
+                        <div key={idx} className="flex gap-3">
+                          <span className="text-white/30 shrink-0">[{log.timestamp}]</span>
+                          <span className={cn(
+                            "font-bold shrink-0 w-20",
+                            log.type === 'SUCCESS' ? "text-green-400" :
+                            log.type === 'ERROR' ? "text-red-400" :
+                            log.type === 'DUPLICATE' ? "text-yellow-400" :
+                            log.type === 'WARNING' ? "text-orange-400" :
+                            "text-blue-400"
+                          )}>
+                            {log.type}
+                          </span>
+                          <span className="text-white/80">{log.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'upload-fv' && (
+            <motion.div 
+              key="upload-fv"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-4xl mx-auto"
+            >
+              <div className="mb-12">
+                <h2 className="text-2xl font-bold tracking-tighter text-zinc-800">Alta de Facturas de Venta</h2>
+                <p className="text-sm opacity-40 font-medium">Sube múltiples facturas de venta. El sistema las clasificará automáticamente.</p>
+              </div>
+
+              <div className="bg-white p-12 rounded-[40px] border border-[#0A0A0A]/5 shadow-sm flex flex-col items-center gap-8">
+                <label 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, undefined, 'sale')}
+                  className={cn(
+                    "flex flex-col items-center justify-center w-full h-80 border-2 border-dashed rounded-[32px] cursor-pointer transition-all group",
+                    isDragging ? "border-[#0A0A0A] bg-[#F5F5F4] scale-[1.01]" : "border-[#0A0A0A]/10 hover:bg-[#F5F5F4] hover:border-[#0A0A0A]/20"
+                  )}
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    {isUploading ? (
+                      <Loader2 size={64} className="animate-spin mb-6 text-[#0A0A0A]" />
+                    ) : (
+                      <div className="w-20 h-20 bg-[#0A0A0A] rounded-3xl flex items-center justify-center text-white mb-6 group-hover:scale-110 transition-transform">
+                        <FileUp size={32} />
+                      </div>
+                    )}
+                    <p className="mb-2 text-xl font-bold tracking-tight">
+                      {isUploading ? "Procesando facturas..." : "Arrastra tus facturas de venta aquí"}
+                    </p>
+                    <p className="text-sm opacity-40 font-medium">Puedes subir hasta 15 facturas a la vez</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    multiple 
+                    onChange={(e) => handleFileUpload(e, undefined, 'sale')} 
+                    accept="image/*,application/pdf" 
+                  />
+                </label>
+
+                <div className="grid grid-cols-3 gap-6 w-full">
+                    <div 
+                      onClick={() => setIsPasteModalOpen(true)}
+                      className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2 cursor-pointer hover:bg-[#E4E3E0] transition-all group/card"
+                    >
+                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm group-hover/card:scale-110 transition-transform">
+                        <Terminal size={16} className="opacity-40" />
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-40">Consola Matrix</p>
+                      <p className="text-sm font-medium leading-tight">Pegar datos directamente desde tu OCR externo.</p>
+                    </div>
+                  <div className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2">
+                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                      <Building2 size={16} className="opacity-40" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40">Clasificación</p>
+                    <p className="text-sm font-medium leading-tight">Asignación inteligente al cliente correspondiente.</p>
+                  </div>
+                  <div className="p-6 bg-[#F5F5F4] rounded-2xl flex flex-col gap-2">
+                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                      <UserPlus size={16} className="opacity-40" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-40">Nuevos Clientes</p>
                     <p className="text-sm font-medium leading-tight">Propuesta de alta si el CIF no existe en el sistema.</p>
                   </div>
                 </div>
@@ -4563,7 +5470,7 @@ export default function App() {
                   <UserPlus size={24} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold tracking-tight">Nuevo Proveedor Detectado</h3>
+                  <h3 className="text-xl font-bold tracking-tight">Nuevo {proposal.type === 'sale' ? 'Cliente' : 'Proveedor'} Detectado</h3>
                   <p className="text-xs opacity-60 uppercase tracking-widest font-semibold">CIF {proposal.cif} no registrado</p>
                 </div>
               </div>
@@ -4579,13 +5486,13 @@ export default function App() {
                     <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-amber-700">
                         <AlertCircle size={18} />
-                        <h4 className="text-[10px] font-bold uppercase tracking-widest">Proveedores similares detectados</h4>
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest">{proposal.type === 'sale' ? 'Clientes' : 'Proveedores'} similares detectados</h4>
                       </div>
                       <div className="flex flex-col gap-2">
                         {similarSuppliers.map(s => (
                           <button
                             key={s.id}
-                            onClick={() => handleAssociateSimilarSupplier(s.id)}
+                            onClick={() => handleAssociateSimilarEntity(s.id)}
                             className="flex items-center justify-between p-3 bg-white rounded-xl hover:bg-amber-100 transition-colors border border-amber-200 group"
                           >
                             <div className="text-left">
@@ -4600,7 +5507,7 @@ export default function App() {
                         ))}
                       </div>
                       <p className="text-[9px] text-amber-700/60 font-medium italic">
-                        Si el proveedor ya existe, selecciónalo arriba para evitar duplicados.
+                        Si el {proposal.type === 'sale' ? 'cliente' : 'proveedor'} ya existe, selecciónalo arriba para evitar duplicados.
                       </p>
                     </div>
                   )}
@@ -4642,12 +5549,12 @@ export default function App() {
                         <h4 className="font-bold uppercase tracking-widest text-sm">Asociación Genérica</h4>
                       </div>
                       <p className="text-xs text-violet-600/70 font-medium">
-                        Esta factura se asociará al proveedor genérico configurado en el sistema.
+                        Esta factura se asociará al {proposal.type === 'sale' ? 'cliente' : 'proveedor'} genérico configurado en el sistema.
                       </p>
-                      {genericSupplier && (
+                      {(proposal.type === 'sale' ? genericCustomer : genericSupplier) && (
                         <div className="mt-2 pt-2 border-t border-violet-200">
-                          <span className="text-[10px] text-violet-600/50 font-bold uppercase tracking-widest block mb-1">Proveedor Destino</span>
-                          <span className="text-sm font-bold text-violet-900">{genericSupplier.name}</span>
+                          <span className="text-[10px] text-violet-600/50 font-bold uppercase tracking-widest block mb-1">{proposal.type === 'sale' ? 'Cliente' : 'Proveedor'} Destino</span>
+                          <span className="text-sm font-bold text-violet-900">{(proposal.type === 'sale' ? genericCustomer : genericSupplier)?.name}</span>
                         </div>
                       )}
                     </div>
@@ -4668,8 +5575,8 @@ export default function App() {
                         {useGenericInProposal && <Check size={14} className="text-white" />}
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-opacity">Asociar a Proveedor Genérico</span>
-                    {useGenericInProposal && genericSupplier && (
+                        <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-opacity">Asociar a {proposal.type === 'sale' ? 'Cliente' : 'Proveedor'} Genérico</span>
+                        {useGenericInProposal && (proposal.type === 'sale' ? genericCustomer : genericSupplier) && (
                           <span className="text-[10px] text-violet-600 font-bold uppercase tracking-widest">
                             Listo para asociar
                           </span>
@@ -4677,11 +5584,11 @@ export default function App() {
                       </div>
                     </label>
 
-                    {useGenericInProposal && !genericSupplier && (
+                    {useGenericInProposal && !(proposal.type === 'sale' ? genericCustomer : genericSupplier) && (
                       <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600">
                         <AlertCircle size={20} />
                         <p className="text-xs font-bold uppercase tracking-widest">
-                          No existe un proveedor genérico configurado.
+                          No existe un {proposal.type === 'sale' ? 'cliente' : 'proveedor'} genérico configurado.
                         </p>
                       </div>
                     )}
@@ -4692,10 +5599,10 @@ export default function App() {
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-[#F5F5F4] p-4 rounded-2xl"
                       >
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Concepto del Gasto</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-1 block">Concepto de la {proposal.type === 'sale' ? 'Venta' : 'Compra'}</label>
                         <input 
                           type="text" 
-                          placeholder="Ej: Comida cliente X, Material oficina..."
+                          placeholder={proposal.type === 'sale' ? "Ej: Venta esporádica..." : "Ej: Comida cliente X, Material oficina..."}
                           value={proposalConcept}
                           onChange={(e) => setProposalConcept(e.target.value)}
                           className="w-full px-4 py-3 bg-white rounded-xl border-none outline-none font-medium shadow-sm"
@@ -4712,7 +5619,7 @@ export default function App() {
                     Descartar
                   </button>
                   <button 
-                    onClick={handleCreateSupplier}
+                    onClick={handleCreateEntity}
                     disabled={isUploading}
                     className="flex-2 py-4 bg-[#0A0A0A] text-white rounded-2xl font-bold text-sm hover:scale-[1.02] transition-transform shadow-lg shadow-black/10 disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
                   >
