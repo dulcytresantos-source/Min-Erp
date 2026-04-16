@@ -3082,7 +3082,7 @@ export default function App() {
                         if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{formatSupplierId(s.id)}</div>;
                         if (col.id === 'name') return (
                           <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 flex flex-col justify-center truncate">
-                            <span className="font-bold text-xs truncate">{toTitleCase(s.name)}</span>
+                            <span className="font-bold text-xs truncate">{s.name.toUpperCase()}</span>
                             {s.alias && <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest truncate group-hover:opacity-100">{s.alias}</span>}
                           </div>
                         );
@@ -3202,7 +3202,7 @@ export default function App() {
                         if (col.id === 'id') return <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 font-mono text-[11px] flex items-center">{formatSupplierId(c.id)}</div>;
                         if (col.id === 'name') return (
                           <div key={col.id} className="p-1.5 border-r border-[#0A0A0A]/5 flex flex-col justify-center truncate">
-                            <span className="font-bold text-xs truncate">{toTitleCase(c.name)}</span>
+                            <span className="font-bold text-xs truncate">{c.name.toUpperCase()}</span>
                             {c.alias && <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest truncate group-hover:opacity-100">{c.alias}</span>}
                           </div>
                         );
@@ -3253,7 +3253,7 @@ export default function App() {
                   </button>
                   <div>
                     <h2 className="text-3xl font-bold tracking-tighter">
-                      {isCreatingSupplier ? "Nuevo Proveedor" : selectedSupplier.name}
+                      {isCreatingSupplier ? "Nuevo Proveedor" : selectedSupplier.name.toUpperCase()}
                     </h2>
                     <p className="text-xs font-bold uppercase tracking-widest opacity-40">
                       Ficha de Proveedor / {formatSupplierId(selectedSupplier.id)}
@@ -3395,7 +3395,7 @@ export default function App() {
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Nombre. . . . . . . .</label>
                           <input 
                             readOnly={!isCreatingSupplier && !isEditingSupplier} 
-                            value={isCreatingSupplier || isEditingSupplier ? selectedSupplier.name : toTitleCase(selectedSupplier.name)} 
+                            value={isCreatingSupplier || isEditingSupplier ? selectedSupplier.name : selectedSupplier.name.toUpperCase()} 
                             onChange={(e) => (isCreatingSupplier || isEditingSupplier) && setSelectedSupplier({...selectedSupplier, name: e.target.value})}
                             className={cn(
                               "px-2 py-1.5 rounded-sm border-none outline-none font-bold text-[11px] uppercase",
@@ -3759,7 +3759,7 @@ export default function App() {
                   </button>
                   <div>
                     <h2 className="text-3xl font-bold tracking-tighter">
-                      {isCreatingCustomer ? "Nuevo Cliente" : selectedCustomer.name}
+                      {isCreatingCustomer ? "Nuevo Cliente" : selectedCustomer.name.toUpperCase()}
                     </h2>
                     <p className="text-xs font-bold uppercase tracking-widest opacity-40">
                       Ficha de Cliente / {formatSupplierId(selectedCustomer.id)}
@@ -3837,10 +3837,10 @@ export default function App() {
                           <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-3 block">Nombre / Razón Social</label>
                           <input 
                             type="text"
-                            value={selectedCustomer.name}
+                            value={isCreatingCustomer || isEditingCustomer ? selectedCustomer.name : selectedCustomer.name.toUpperCase()}
                             onChange={(e) => setSelectedCustomer({ ...selectedCustomer, name: e.target.value })}
                             disabled={!isEditingCustomer && !isCreatingCustomer}
-                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-xl font-bold tracking-tight outline-none focus:border-violet-600 transition-colors disabled:opacity-100"
+                            className="w-full bg-transparent border-b border-[#0A0A0A]/10 py-2 text-xl font-bold tracking-tight outline-none focus:border-violet-600 transition-colors disabled:opacity-100 uppercase"
                             placeholder="NOMBRE DE LA EMPRESA..."
                           />
                         </div>
@@ -4884,7 +4884,7 @@ export default function App() {
                               }}
                               className="flex flex-col text-left hover:underline"
                             >
-                              <span className="font-bold text-[11px] tracking-tight">{toTitleCase(inv.supplier_name || "")}</span>
+                              <span className="font-bold text-[11px] tracking-tight">{(inv.supplier_name || "").toUpperCase()}</span>
                               <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{inv.supplier_alias}</span>
                             </button>
                           </div>
@@ -5098,7 +5098,7 @@ export default function App() {
                               }}
                               className="flex flex-col text-left hover:underline"
                             >
-                              <span className="font-bold text-[11px] tracking-tight">{toTitleCase((inv as any).customer_name || "")}</span>
+                              <span className="font-bold text-[11px] tracking-tight">{((inv as any).customer_name || "").toUpperCase()}</span>
                               <span className="text-[9px] opacity-40 font-bold uppercase tracking-widest">{(inv as any).customer_alias}</span>
                             </button>
                           </div>
