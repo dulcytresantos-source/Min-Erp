@@ -4314,7 +4314,7 @@ export default function App() {
                                         setPreviousView('movements');
                                         setView('invoice-document');
                                       }}
-                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors"
+                                      className="w-16 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors flex items-center justify-center"
                                     >
                                       Factura
                                     </button>
@@ -4426,7 +4426,7 @@ export default function App() {
                                       if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Liquidación</span>
+                                          <span className="w-16 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none flex items-center justify-center">LIQ</span>
                                         </div>
                                       );
                                       if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
@@ -4612,7 +4612,7 @@ export default function App() {
                                         setPreviousView('customer-movements');
                                         setView('customer-invoice-document');
                                       }}
-                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors"
+                                      className="w-16 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors flex items-center justify-center"
                                     >
                                       Factura
                                     </button>
@@ -4724,7 +4724,7 @@ export default function App() {
                                       if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Cobro</span>
+                                          <span className="w-16 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none flex items-center justify-center">COBRO</span>
                                         </div>
                                       );
                                       if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
