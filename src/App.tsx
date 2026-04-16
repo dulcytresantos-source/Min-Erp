@@ -190,6 +190,11 @@ const formatDate = (dateStr: string) => {
   }
 };
 
+const formatDocExt = (docExt: string | undefined) => {
+  if (!docExt) return "-";
+  return `..${docExt.slice(-4)}`;
+};
+
 const parseSmartDate = (input: string, baseDateStr: string = format(new Date(), "yyyy-MM-dd")) => {
   if (!input) return null;
   
@@ -755,6 +760,7 @@ export default function App() {
   const [movementColumns, setMovementColumns] = useState([
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
+    { id: 'doc_ext', label: 'DOC (Ext)', width: '80px', sortKey: 'doc_ext' },
     { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
     { id: 'supplier_id', label: 'Cód. Prov.', width: '100px', sortKey: 'supplier_id' },
     { id: 'supplier_name', label: 'Proveedor / Referencia', width: '1fr', sortKey: 'supplier_name' },
@@ -768,6 +774,7 @@ export default function App() {
   const [customerMovementColumns, setCustomerMovementColumns] = useState([
     { id: 'date', label: 'Fecha', width: '100px', sortKey: 'date' },
     { id: 'doc_id', label: 'DOC (Int)', width: '100px', sortKey: 'doc_id' },
+    { id: 'doc_ext', label: 'DOC (Ext)', width: '80px', sortKey: 'doc_ext' },
     { id: 'type', label: 'Tipo', width: '100px', sortKey: 'type' },
     { id: 'supplier_id', label: 'Cód. Clie.', width: '100px', sortKey: 'supplier_id' },
     { id: 'supplier_name', label: 'Cliente / Referencia', width: '1fr', sortKey: 'supplier_name' },
@@ -4297,6 +4304,7 @@ export default function App() {
                             {movementColumns.map((col) => {
                               if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
                               if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
+                              if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center opacity-40">{formatDocExt(inv.doc_ext)}</div>;
                               if (col.id === 'type') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                     <button 
@@ -4415,6 +4423,7 @@ export default function App() {
                                     {movementColumns.map((col) => {
                                       if (col.id === 'date') return <div key={col.id} className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>;
                                       if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
+                                      if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                           <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Liquidación</span>
@@ -4593,6 +4602,7 @@ export default function App() {
                             {movementColumns.map((col) => {
                               if (col.id === 'date') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 text-[10px] flex items-center">{formatDate(inv.date)}</div>;
                               if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center">{inv.doc_id}</div>;
+                              if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[10px] flex items-center opacity-40">{formatDocExt(inv.doc_ext)}</div>;
                               if (col.id === 'type') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                     <button 
@@ -4711,6 +4721,7 @@ export default function App() {
                                     {movementColumns.map((col) => {
                                       if (col.id === 'date') return <div key={col.id} className="p-1 pl-6 border-r border-[#0A0A0A]/5 text-[9px] flex items-center">{formatDate(p.date)}</div>;
                                       if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
+                                      if (col.id === 'doc_ext') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                           <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Cobro</span>
