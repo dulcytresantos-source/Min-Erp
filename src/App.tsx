@@ -2119,6 +2119,12 @@ export default function App() {
       setLiquidationError("Fecha de pago no válida (Use DD/MM/YYYY o T)");
       return;
     }
+
+    const dateObj = new Date(formattedDate);
+    if (isNaN(dateObj.getTime())) {
+      setLiquidationError("Fecha de pago semánticamente no válida");
+      return;
+    }
     
     if (!bankId.trim()) {
       setLiquidationError("El Nº de Movimiento de Liquidación es obligatorio");
@@ -2223,6 +2229,12 @@ export default function App() {
     
     if (!formattedDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
       setLiquidationError("Fecha de pago no válida (Use DD/MM/YYYY o T)");
+      return;
+    }
+
+    const dateObj = new Date(formattedDate);
+    if (isNaN(dateObj.getTime())) {
+      setLiquidationError("Fecha de pago semánticamente no válida");
       return;
     }
     
@@ -3560,7 +3572,7 @@ export default function App() {
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Bloqueado . . . . . .</label>
-                          <div className="px-2 py-1.5 bg-[#F5F5F4] rounded-sm text-[10px] opacity-40 italic">No bloqueado</div>
+                          <div className="px-2 py-1.5 bg-[#F5F5F4] rounded-none text-[10px] opacity-40 italic">No bloqueado</div>
                         </div>
                         <div className="grid grid-cols-[120px_1fr] items-center gap-4">
                           <label className="text-[9px] font-bold uppercase tracking-widest opacity-40">Últ. modif. . . . . . .</label>
@@ -3876,7 +3888,7 @@ export default function App() {
                       <div className="space-y-8 bg-[#F5F5F4]/50 p-8 rounded-sm">
                         <div className="flex items-center justify-between">
                           <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Estado de Cuenta</h3>
-                          <div className="px-3 py-1 bg-teal-100 text-teal-700 text-[9px] font-bold uppercase tracking-widest rounded-full">Activo</div>
+                          <div className="px-3 py-1 bg-teal-100 text-teal-700 text-[9px] font-bold uppercase tracking-widest rounded-none">Activo</div>
                         </div>
                         <div className="space-y-4">
                           <div className="flex justify-between items-end">
@@ -4294,7 +4306,7 @@ export default function App() {
                                         setPreviousView('movements');
                                         setView('invoice-document');
                                       }}
-                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-indigo-200 transition-colors"
+                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors"
                                     >
                                       Factura
                                     </button>
@@ -4341,7 +4353,7 @@ export default function App() {
                               if (col.id === 'status') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                   <span className={cn(
-                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
+                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-none",
                                     inv.status === 'LIQUIDADA' ? "bg-teal-100 text-teal-700" : "bg-rose-100 text-rose-700"
                                   )}>
                                     {inv.status}
@@ -4397,7 +4409,7 @@ export default function App() {
                                 {inv.payments.map(p => (
                                   <div 
                                     key={`pay-${p.id}`} 
-                                    className="grid w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0"
+                                    className="grid w-full text-[#0A0A0A]/60 border-b border-[#0A0A0A]/5 last:border-b-0"
                                     style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
                                   >
                                     {movementColumns.map((col) => {
@@ -4405,7 +4417,7 @@ export default function App() {
                                       if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Liquidación</span>
+                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Liquidación</span>
                                         </div>
                                       );
                                       if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
@@ -4590,7 +4602,7 @@ export default function App() {
                                         setPreviousView('customer-movements');
                                         setView('customer-invoice-document');
                                       }}
-                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-full hover:bg-indigo-200 transition-colors"
+                                      className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold uppercase tracking-widest rounded-none hover:bg-indigo-200 transition-colors"
                                     >
                                       Factura
                                     </button>
@@ -4637,7 +4649,7 @@ export default function App() {
                               if (col.id === 'status') return (
                                 <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
                                   <span className={cn(
-                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full",
+                                    "px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-none",
                                     inv.status === 'COBRADA' ? "bg-teal-100 text-teal-700" : "bg-rose-100 text-rose-700"
                                   )}>
                                     {inv.status}
@@ -4693,7 +4705,7 @@ export default function App() {
                                 {inv.payments.map(p => (
                                   <div 
                                     key={`pay-${p.id}`} 
-                                    className="grid w-full text-[#0A0A0A]/60 italic border-b border-[#0A0A0A]/5 last:border-b-0"
+                                    className="grid w-full text-[#0A0A0A]/60 border-b border-[#0A0A0A]/5 last:border-b-0"
                                     style={{ gridTemplateColumns: getMovementGridTemplate(movementColumns) }}
                                   >
                                     {movementColumns.map((col) => {
@@ -4701,7 +4713,7 @@ export default function App() {
                                       if (col.id === 'doc_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-40">{p.doc_id}</div>;
                                       if (col.id === 'type') return (
                                         <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 flex items-center justify-center">
-                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-full">Cobro</span>
+                                          <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-bold uppercase tracking-widest rounded-none">Cobro</span>
                                         </div>
                                       );
                                       if (col.id === 'supplier_id') return <div key={col.id} className="p-1 border-r border-[#0A0A0A]/5 font-mono text-[9px] flex items-center opacity-20">---</div>;
@@ -5644,29 +5656,29 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
+              className="bg-white rounded-none w-full max-w-lg shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
             >
               {/* Header */}
               <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <div className="w-12 h-12 bg-white/20 rounded-none flex items-center justify-center backdrop-blur-sm">
                     <CreditCard size={24} />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold tracking-tight">Liquidar Factura</h3>
                     <div className="flex gap-2 items-center opacity-70">
                       <p className="text-[10px] uppercase tracking-widest font-bold">DOC: {isLiquidating.doc_id}</p>
-                      <span className="w-1 h-1 bg-white/40 rounded-full" />
+                      <span className="w-1 h-1 bg-white/40" />
                       <p className="text-[10px] uppercase tracking-widest font-bold">REF: {isLiquidating.invoice_number}</p>
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setIsLiquidating(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20} /></button>
+                <button onClick={() => setIsLiquidating(null)} className="p-2 hover:bg-white/10 transition-colors"><X size={20} /></button>
               </div>
 
               <div className="p-8 flex flex-col gap-8">
                 {/* Type Selection Tabs */}
-                <div className="flex gap-2 p-1.5 bg-[#F5F5F4] rounded-2xl">
+                <div className="flex gap-2 p-1.5 bg-[#F5F5F4] rounded-none">
                   <button 
                     onClick={() => {
                       setIsMultipleLiquidation(false);
@@ -5674,7 +5686,7 @@ export default function App() {
                       setPaymentAmount((isLiquidating.total_amount - isLiquidating.paid_amount).toFixed(2));
                     }}
                     className={cn(
-                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
+                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-none transition-all flex items-center justify-center gap-2",
                       !isMultipleLiquidation ? "bg-white shadow-sm text-blue-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
                     )}
                   >
@@ -5687,7 +5699,7 @@ export default function App() {
                       setPaymentAmount(total.toFixed(2));
                     }}
                     className={cn(
-                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
+                      "flex-1 py-3 text-[11px] font-bold uppercase tracking-widest rounded-none transition-all flex items-center justify-center gap-2",
                       isMultipleLiquidation ? "bg-white shadow-sm text-blue-600" : "text-[#0A0A0A]/40 hover:text-[#0A0A0A]/60"
                     )}
                   >
@@ -5698,7 +5710,7 @@ export default function App() {
                 {isMultipleLiquidation && (
                   <div className="flex flex-col gap-3">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Seleccionar Facturas Pendientes</label>
-                    <div className="max-h-[180px] overflow-y-auto border border-[#0A0A0A]/5 rounded-2xl divide-y divide-[#0A0A0A]/5 bg-[#F5F5F4]/30">
+                    <div className="max-h-[180px] overflow-y-auto border border-[#0A0A0A]/5 rounded-none divide-y divide-[#0A0A0A]/5 bg-[#F5F5F4]/30">
                       {groupedInvoices
                         .filter(inv => inv.supplier_id === isLiquidating.supplier_id && inv.pending > 0)
                         .map(inv => (
@@ -5725,7 +5737,7 @@ export default function App() {
                           >
                             <div className="flex items-center gap-4">
                               <div className={cn(
-                                "w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all",
+                                "w-5 h-5 rounded-none border-2 flex items-center justify-center transition-all",
                                 selectedInvoicesForBatch.includes(inv.id) ? "bg-blue-600 border-blue-600 text-white" : "border-[#0A0A0A]/10 bg-white"
                               )}>
                                 {selectedInvoicesForBatch.includes(inv.id) && <Check size={12} strokeWidth={3} />}
@@ -5743,7 +5755,7 @@ export default function App() {
                 )}
 
                 {liquidationError && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-none flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
                     <AlertCircle size={16} />
                     {liquidationError}
                   </div>
@@ -5765,31 +5777,11 @@ export default function App() {
                         readOnly={isMultipleLiquidation}
                         onChange={(e) => setPaymentAmount(e.target.value)}
                         className={cn(
-                          "w-full pl-12 pr-6 py-5 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-mono font-bold text-3xl focus:border-blue-600/20 focus:bg-white transition-all",
+                          "w-full pl-12 pr-6 py-5 bg-[#F5F5F4] rounded-none border-2 border-transparent outline-none font-mono font-bold text-3xl focus:border-blue-600/20 focus:bg-white transition-all",
                           isMultipleLiquidation && "opacity-60 cursor-not-allowed"
                         )}
                       />
                     </div>
-                    
-                    {!isMultipleLiquidation && (
-                      <div className="flex gap-2 mt-3">
-                        {[10, 50, 100].map(amt => (
-                          <button 
-                            key={amt}
-                            onClick={() => setPaymentAmount((prev) => (parseFloat(prev || "0") + amt).toFixed(2))}
-                            className="flex-1 py-2 bg-[#F5F5F4] hover:bg-blue-50 hover:text-blue-600 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent hover:border-blue-600/10"
-                          >
-                            +{amt}€
-                          </button>
-                        ))}
-                        <button 
-                          onClick={() => setPaymentAmount(((isLiquidating.total_amount ?? 0) - (isLiquidating.paid_amount ?? 0)).toFixed(2))}
-                          className="flex-1 py-2 bg-blue-600/5 hover:bg-blue-600 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all text-blue-600 border border-blue-600/10 hover:border-transparent"
-                        >
-                          Max
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -5801,17 +5793,24 @@ export default function App() {
                         value={paymentDate}
                         onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
                         onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
-                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            document.getElementById('bank-id-input-liq')?.focus();
+                          }
+                        }}
+                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-none border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
                       />
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Nº Movimiento</label>
                       <input 
                         type="text" 
+                        id="bank-id-input-liq"
                         value={bankId}
                         onChange={(e) => setBankId(e.target.value)}
                         placeholder="MOVIMIENTO..."
-                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
+                        className="w-full px-4 py-3 bg-[#F5F5F4] rounded-none border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
                       />
                     </div>
                   </div>
@@ -5819,7 +5818,7 @@ export default function App() {
 
                 <button 
                   onClick={handleLiquidate}
-                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
+                  className="w-full py-5 bg-blue-600 text-white rounded-none font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
                 >
                   <Check size={18} strokeWidth={3} />
                   Confirmar Liquidación {isMultipleLiquidation ? "Múltiple" : "Simple"}
@@ -5835,12 +5834,12 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
+              className="bg-white rounded-none w-full max-w-md shadow-2xl overflow-hidden border border-[#0A0A0A]/5"
             >
               {/* Header */}
               <div className="p-6 flex justify-between items-start">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center overflow-hidden">
+                  <div className="w-14 h-14 bg-blue-50 rounded-none flex items-center justify-center overflow-hidden">
                     <Layers size={28} className="text-blue-600" />
                   </div>
                   <div>
@@ -5848,14 +5847,14 @@ export default function App() {
                     <p className="text-[11px] opacity-40 uppercase tracking-widest font-bold">{selectedInvoicesForBatch.length} Facturas Seleccionadas</p>
                   </div>
                 </div>
-                <button onClick={() => setIsBatchLiquidating(false)} className="p-2 hover:bg-[#F5F5F4] rounded-full transition-colors text-[#0A0A0A]/40 hover:text-[#0A0A0A]">
+                <button onClick={() => setIsBatchLiquidating(false)} className="p-2 hover:bg-[#F5F5F4] transition-colors text-[#0A0A0A]/40 hover:text-[#0A0A0A]">
                   <X size={20} />
                 </button>
               </div>
 
               <div className="px-8 pb-8 flex flex-col gap-8">
                 {/* Amount Display */}
-                <div className="text-center py-8 bg-[#F5F5F4]/50 rounded-3xl border border-[#0A0A0A]/5">
+                <div className="text-center py-8 bg-[#F5F5F4]/50 rounded-none border border-[#0A0A0A]/5">
                   <label className="text-[11px] font-bold uppercase tracking-widest opacity-40 block mb-2">Total a Liquidar</label>
                   <div className="text-6xl font-bold text-[#0A0A0A] flex items-baseline justify-center">
                     <span className="text-2xl opacity-20 mr-2">€</span>
@@ -5867,7 +5866,7 @@ export default function App() {
                 </div>
 
                 {liquidationError && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-none flex items-center gap-3 text-rose-600 text-[11px] font-bold uppercase tracking-widest">
                     <AlertCircle size={16} />
                     {liquidationError}
                   </div>
@@ -5882,24 +5881,31 @@ export default function App() {
                       value={paymentDate}
                       onChange={(e) => handleDateInput(e.target.value, setPaymentDate)}
                       onBlur={() => setPaymentDate(smartFormatDate(paymentDate))}
-                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          document.getElementById('bank-id-input-batch')?.focus();
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-none border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all"
                     />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Nº Movimiento</label>
                     <input 
                       type="text" 
+                      id="bank-id-input-batch"
                       value={bankId}
                       onChange={(e) => setBankId(e.target.value)}
                       placeholder="MOVIMIENTO..."
-                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-2xl border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
+                      className="w-full px-4 py-3 bg-[#F5F5F4] rounded-none border-2 border-transparent outline-none font-bold text-xs uppercase focus:border-blue-600/20 focus:bg-white transition-all placeholder:opacity-20"
                     />
                   </div>
                 </div>
 
                 <button 
                   onClick={handleBatchLiquidate}
-                  className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
+                  className="w-full py-5 bg-blue-600 text-white rounded-none font-bold text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-3"
                 >
                   <Check size={18} strokeWidth={3} />
                   Confirmar Liquidación por Lotes
