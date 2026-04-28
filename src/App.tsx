@@ -455,6 +455,10 @@ export default function App() {
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [allCustomerInvoices, setAllCustomerInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const activeCompany = useMemo(() => 
+    companies.find(c => c.id === activeCompanyId),
+    [companies, activeCompanyId]
+  );
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [movementsFilterSupplierId, setMovementsFilterSupplierId] = useState<string | null>(null);
@@ -1621,6 +1625,16 @@ export default function App() {
         });
 
         const parsed = await parseInvoice(base64, file.type);
+
+        // Recipient/Issuer CIF validation (Alert if it doesn't match active company)
+        if (activeCompany) {
+          const targetCif = type === 'purchase' ? parsed.customerCif : parsed.cif;
+          const companyCifMatch = sameCif(targetCif || "", activeCompany.cif);
+          if (!companyCifMatch.match) {
+            const msg = `Atención: El CIF ${type === 'purchase' ? 'receptor' : 'emisor'} detectado (${targetCif || 'No detectado'}) no coincide con el CIF de tu empresa (${activeCompany.cif}).`;
+            addLogEntry('WARNING', `${file.name}: ${msg}`);
+          }
+        }
         
         // Extract DOC from filename if possible (e.g., "02-FC21 IBM 233,44€")
         const docMatch = file.name.match(/^([A-Z0-9-]+)\s/i);

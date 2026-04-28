@@ -15,6 +15,7 @@ export async function parseInvoice(base64Data: string, mimeType: string) {
     const prompt = `Analiza esta factura y extrae la siguiente información en español. Es MUY IMPORTANTE intentar localizar la Fecha de Vencimiento (Due Date), si no aparece explícitamente, busca términos como "Vencimiento", "Fecha límite de pago", "Pagar antes de", etc.:
     - Nombre del Proveedor (Supplier Name)
     - CIF/NIF del proveedor (Tax ID)
+    - CIF/NIF del receptor/cliente (Customer Tax ID)
     - Número de Factura (Invoice Number)
     - Fecha de Emisión (Issue Date) en formato YYYY-MM-DD
     - Fecha de Vencimiento (Due Date) en formato YYYY-MM-DD (SIEMPRE intenta extraerla)
@@ -54,6 +55,7 @@ export async function parseInvoice(base64Data: string, mimeType: string) {
           properties: {
             supplierName: { type: Type.STRING },
             cif: { type: Type.STRING },
+            customerCif: { type: Type.STRING },
             invoiceNumber: { type: Type.STRING },
             issueDate: { type: Type.STRING },
             dueDate: { type: Type.STRING },
