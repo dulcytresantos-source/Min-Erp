@@ -85,6 +85,49 @@ const toTitleCase = (str: string) => {
     .join(' ');
 };
 
+const normalizeString = (str: string) => {
+  if (!str) return "";
+  // Remove legal forms and standardize
+  const commonLegalForms = /\s+(S\.?L\.?U\.?|S\.?A\.?U\.?|S\.?L\.?P\.?|S\.?L\.?|S\.?A\.?|S\.?C\.?P\.?|S\.?L\.?L\.?|S\.?A\.?L\.?|C\.?B\.?|S\.?COOP\.?)$/gi;
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(commonLegalForms, "")
+    .replace(/[.,]/g, "")
+    .trim();
+};
+
+const extractDigits = (str: string) => (str || '').replace(/\D/g, '');
+
+const sameCif = (cifA: string, cifB: string): { match: boolean; level: 'exact' | 'probable' | 'none' } => {
+  const digitsA = extractDigits(cifA);
+  const digitsB = extractDigits(cifB);
+  
+  if (!digitsA || !digitsB) return { match: false, level: 'none' };
+  
+  if (digitsA === digitsB) return { match: true, level: 'exact' };
+  
+  // If one contains the other (min 7 digits unique part)
+  if (digitsA.length >= 7 && digitsB.length >= 7) {
+    if (digitsA.includes(digitsB) || digitsB.includes(digitsA)) {
+      return { match: true, level: 'exact' };
+    }
+  }
+
+  // Probable: same length ±1 and only 1 digit different (OCR typo)
+  if (Math.abs(digitsA.length - digitsB.length) <= 1) {
+    const minLen = Math.min(digitsA.length, digitsB.length);
+    let diffs = Math.abs(digitsA.length - digitsB.length);
+    for (let i = 0; i < minLen; i++) {
+      if (digitsA[i] !== digitsB[i]) diffs++;
+    }
+    if (diffs <= 1) return { match: true, level: 'probable' };
+  }
+
+  return { match: false, level: 'none' };
+};
+
 interface Supplier {
   id: string;
   company_id: number;
@@ -103,6 +146,7 @@ interface Supplier {
   main_contact?: string;
   pending_balance: number;
   is_generic?: number;
+  matchLevel?: 'exact' | 'probable' | 'possible';
 }
 
 interface Customer {
@@ -123,6 +167,7 @@ interface Customer {
   main_contact?: string;
   pending_balance: number;
   is_generic?: number;
+  matchLevel?: 'exact' | 'probable' | 'possible';
 }
 
 interface Company {
@@ -437,108 +482,119 @@ export default function App() {
   const [similarSuppliers, setSimilarSuppliers] = useState<Supplier[]>([]);
   const [proposal, setProposal] = useState<NewSupplierProposal | null>(null);
 
-  const findSimilarSuppliers = useCallback((name: string, cif: string) => {
+  const findSimilarSuppliers = useCallback((name: string, cif: string): Supplier[] => {
     if (!name && !cif) return [];
     
-    const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const numericCif = cif.replace(/\D/g, '');
+    const normalizedName = normalizeString(name);
+    const nameWords = normalizedName.split(/\s+/).filter(w => w.length >= 5);
 
-    const found = suppliers.filter(s => {
-      // CIF Similarity
-      const sNumericCif = s.cif.replace(/\D/g, '');
-      let cifMatch = false;
+    const results = suppliers.map(s => {
+      let matchLevel: 'exact' | 'probable' | 'possible' | null = null;
       
-      if (numericCif && sNumericCif) {
-        // Check if one is a substring of the other (at least 6 digits)
-        if (numericCif.length >= 6 && sNumericCif.length >= 6) {
-          if (numericCif.includes(sNumericCif) || sNumericCif.includes(numericCif)) {
-            cifMatch = true;
-          }
+      // 1. CIF Match
+      if (cif && s.cif) {
+        const cifCheck = sameCif(cif, s.cif);
+        if (cifCheck.level === 'exact') matchLevel = 'exact';
+        else if (cifCheck.level === 'probable') matchLevel = 'probable';
+      }
+
+      // 2. Name Match (if not already exact)
+      if (matchLevel !== 'exact' && normalizedName) {
+        const sNormalizedName = normalizeString(s.name);
+        const sNormalizedAlias = normalizeString(s.alias || "");
+        
+        // Exact name match
+        if (sNormalizedName === normalizedName || sNormalizedAlias === normalizedName) {
+          matchLevel = 'exact';
+        } 
+        // Probable: one contains the other (long enough)
+        else if ((normalizedName.length > 5 && sNormalizedName.includes(normalizedName)) || 
+                 (sNormalizedName.length > 5 && normalizedName.includes(sNormalizedName))) {
+          if (!matchLevel) matchLevel = 'probable';
         }
         
-        // Or check if they share a long common sequence (e.g. 7 digits)
-        if (!cifMatch) {
-          let matches = 0;
-          const minLen = Math.min(numericCif.length, sNumericCif.length);
-          for (let i = 0; i < minLen; i++) {
-            if (numericCif[i] === sNumericCif[i]) matches++;
+        // Possible: share 2+ keywords of 5+ chars
+        if (!matchLevel || matchLevel === 'possible') {
+          const sWords = sNormalizedName.split(/\s+/).filter(w => w.length >= 5);
+          const sharedWords = nameWords.filter(w => sWords.includes(w));
+          if (sharedWords.length >= 2) {
+            matchLevel = 'possible';
           }
-          if (matches >= 7) cifMatch = true;
         }
       }
 
-      // Name Similarity
-      const sNormalizedName = s.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const sNormalizedAlias = (s.alias || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      
-      const nameMatch = normalizedName.length > 3 && (
-        sNormalizedName.includes(normalizedName) || 
-        normalizedName.includes(sNormalizedName) ||
-        sNormalizedAlias.includes(normalizedName) ||
-        normalizedName.includes(sNormalizedAlias)
-      );
-
-      return cifMatch || nameMatch;
+      return matchLevel ? { ...s, matchLevel } : null;
+    })
+    .filter((s): s is Supplier & { matchLevel: 'exact' | 'probable' | 'possible' } => s !== null)
+    .sort((a, b) => {
+      const order = { exact: 0, probable: 1, possible: 2 };
+      return order[a.matchLevel] - order[b.matchLevel];
     });
 
-    if (found.length > 0) {
+    if (results.length > 0) {
       console.log(`%c[SIMILAR SUPPLIERS DETECTED]`, 'background: #fef08a; color: #854d0e; font-weight: bold; padding: 2px 4px; border-radius: 2px;');
-      found.forEach(s => {
-        console.log(`- ${s.name} (CIF: ${s.cif}) matches ${name} (CIF: ${cif})`);
-        logDebug('info', `Similar supplier detected: ${s.name} (${s.cif}) for ${name} (${cif})`);
+      results.forEach(s => {
+        console.log(`- ${s.name} (CIF: ${s.cif}) matches ${name} (CIF: ${cif}) [${s.matchLevel}]`);
       });
     }
 
-    return found;
+    return results;
   }, [suppliers]);
 
-  const findSimilarCustomers = useCallback((name: string, cif: string) => {
+  const findSimilarCustomers = useCallback((name: string, cif: string): Customer[] => {
     if (!name && !cif) return [];
     
-    const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const numericCif = cif.replace(/\D/g, '');
+    const normalizedName = normalizeString(name);
+    const nameWords = normalizedName.split(/\s+/).filter(w => w.length >= 5);
 
-    const found = customers.filter(c => {
-      // CIF Similarity
-      const cNumericCif = c.cif.replace(/\D/g, '');
-      let cifMatch = false;
+    const results = customers.map(c => {
+      let matchLevel: 'exact' | 'probable' | 'possible' | null = null;
       
-      if (numericCif && cNumericCif) {
-        if (numericCif.length >= 6 && cNumericCif.length >= 6) {
-          if (numericCif.includes(cNumericCif) || cNumericCif.includes(numericCif)) {
-            cifMatch = true;
-          }
+      // 1. CIF Match
+      if (cif && c.cif) {
+        const cifCheck = sameCif(cif, c.cif);
+        if (cifCheck.level === 'exact') matchLevel = 'exact';
+        else if (cifCheck.level === 'probable') matchLevel = 'probable';
+      }
+
+      // 2. Name Match (if not already exact)
+      if (matchLevel !== 'exact' && normalizedName) {
+        const cNormalizedName = normalizeString(c.name);
+        const cNormalizedAlias = normalizeString(c.alias || "");
+        
+        // Exact name match
+        if (cNormalizedName === normalizedName || cNormalizedAlias === normalizedName) {
+          matchLevel = 'exact';
+        } 
+        // Probable: one contains the other (long enough)
+        else if ((normalizedName.length > 5 && cNormalizedName.includes(normalizedName)) || 
+                 (cNormalizedName.length > 5 && normalizedName.includes(cNormalizedName))) {
+          if (!matchLevel) matchLevel = 'probable';
         }
         
-        if (!cifMatch) {
-          let matches = 0;
-          const minLen = Math.min(numericCif.length, cNumericCif.length);
-          for (let i = 0; i < minLen; i++) {
-            if (numericCif[i] === cNumericCif[i]) matches++;
+        // Possible: share 2+ keywords of 5+ chars
+        if (!matchLevel || matchLevel === 'possible') {
+          const cWords = cNormalizedName.split(/\s+/).filter(w => w.length >= 5);
+          const sharedWords = nameWords.filter(w => cWords.includes(w));
+          if (sharedWords.length >= 2) {
+            matchLevel = 'possible';
           }
-          if (matches >= 7) cifMatch = true;
         }
       }
 
-      // Name Similarity
-      const cNormalizedName = c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const cNormalizedAlias = (c.alias || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      
-      const nameMatch = normalizedName.length > 3 && (
-        cNormalizedName.includes(normalizedName) || 
-        normalizedName.includes(cNormalizedName) ||
-        cNormalizedAlias.includes(normalizedName) ||
-        normalizedName.includes(cNormalizedAlias)
-      );
-
-      return cifMatch || nameMatch;
+      return matchLevel ? { ...c, matchLevel } : null;
+    })
+    .filter((c): c is Customer & { matchLevel: 'exact' | 'probable' | 'possible' } => c !== null)
+    .sort((a, b) => {
+      const order = { exact: 0, probable: 1, possible: 2 };
+      return order[a.matchLevel!] - order[b.matchLevel!];
     });
 
-    if (found.length > 0) {
+    if (results.length > 0) {
       console.log(`%c[SIMILAR CUSTOMERS DETECTED]`, 'background: #fef08a; color: #854d0e; font-weight: bold; padding: 2px 4px; border-radius: 2px;');
     }
 
-    return found;
+    return results;
   }, [customers]);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pastedText, setPastedText] = useState("");
@@ -646,10 +702,34 @@ export default function App() {
           }
           addLogEntry('SUCCESS', `Factura creada para ${existingEntity.name}`);
         } else {
-          addLogEntry('INFO', `${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado: ${nombreProveedor}`);
           const similar = type === 'purchase' 
             ? findSimilarSuppliers(nombreProveedor, parsedData.cif)
             : findSimilarCustomers(nombreProveedor, parsedData.cif);
+            
+          const exactMatch = similar.find(s => s.matchLevel === 'exact');
+          
+          if (exactMatch) {
+            const invoicesToCheck = type === 'purchase' ? allInvoices : allCustomerInvoices;
+            const isDuplicate = invoicesToCheck.some(inv => 
+              ((type === 'purchase' ? inv.supplier_id : (inv as any).customer_id) === exactMatch.id && (inv.doc_ext === parsedData.invoiceNumber || inv.invoice_number === parsedData.invoiceNumber)) ||
+              (docId && inv.doc_id === docId)
+            );
+
+            if (isDuplicate) {
+              addLogEntry('DUPLICATE', `Factura ${docId || parsedData.invoiceNumber} ya existe (Auto-match).`);
+              continue;
+            }
+
+            if (type === 'purchase') {
+              await createInvoice(exactMatch.id, parsedData, "Factura pegada (Auto-matched)");
+            } else {
+              await createCustomerInvoice(exactMatch.id, parsedData, "Factura pegada (Auto-matched)");
+            }
+            addLogEntry('SUCCESS', `Factura auto-asociada a ${exactMatch.name} (Match Exacto)`);
+            continue;
+          }
+
+          addLogEntry('INFO', `${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado: ${nombreProveedor}`);
           setSimilarSuppliers(similar);
           setProposal({
             name: parsedData.supplierName,
@@ -1602,12 +1682,46 @@ export default function App() {
             fetchCustomerDetails(existingEntity.id);
           }
         } else {
-          addLogEntry('INFO', `${file.name}: ${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado (${parsed.supplierName})`);
-          setUseGenericInProposal(false);
-          setProposalConcept("");
           const similar = type === 'purchase' 
             ? findSimilarSuppliers(parsed.supplierName, parsed.cif)
             : findSimilarCustomers(parsed.supplierName, parsed.cif);
+            
+          const exactMatch = similar.find(s => s.matchLevel === 'exact');
+          
+          if (exactMatch) {
+            // Client-side duplicate check against DB for exact match
+            const invoicesToCheck = type === 'purchase' ? allInvoices : allCustomerInvoices;
+            const isDuplicate = invoicesToCheck.some(inv => 
+              ((type === 'purchase' ? inv.supplier_id : (inv as any).customer_id) === exactMatch.id && (inv.doc_ext === parsed.invoiceNumber || inv.invoice_number === parsed.invoiceNumber)) ||
+              (docId && inv.doc_id === docId)
+            );
+
+            if (isDuplicate) {
+              const duplicateType = invoicesToCheck.some(inv => docId && inv.doc_id === docId) ? `DOC (Int): ${docId}` : `Nº: ${parsed.invoiceNumber}`;
+              const msg = `Factura duplicada detectada para match exacto (${duplicateType})`;
+              setUploadError(msg);
+              addLogEntry('DUPLICATE', `${file.name}: ${msg}`);
+              continue;
+            }
+
+            if (type === 'purchase') {
+              await createInvoice(exactMatch.id, { ...parsed, docId }, "Factura genérica (Auto-matched)");
+            } else {
+              await createCustomerInvoice(exactMatch.id, { ...parsed, docId }, "Factura de venta (Auto-matched)");
+            }
+            
+            addLogEntry('SUCCESS', `${file.name}: Auto-asociada correctamente a ${exactMatch.name} (Match Exacto)`);
+            if (type === 'purchase' && selectedSupplier?.id === exactMatch.id) {
+              fetchSupplierDetails(exactMatch.id);
+            } else if (type === 'sale' && selectedCustomer?.id === exactMatch.id) {
+              fetchCustomerDetails(exactMatch.id);
+            }
+            continue;
+          }
+
+          addLogEntry('INFO', `${file.name}: ${type === 'purchase' ? 'Proveedor' : 'Cliente'} nuevo detectado (${parsed.supplierName})`);
+          setUseGenericInProposal(false);
+          setProposalConcept("");
           setSimilarSuppliers(similar);
           setProposal({
             name: parsed.supplierName,
@@ -5516,13 +5630,25 @@ export default function App() {
                           <button
                             key={s.id}
                             onClick={() => handleAssociateSimilarEntity(s.id)}
-                            className="flex items-center justify-between p-3 bg-white rounded-xl hover:bg-amber-100 transition-colors border border-amber-200 group"
+                            className="flex items-center justify-between p-3 bg-white rounded-xl hover:bg-amber-100 transition-colors border border-amber-200 group text-left"
                           >
-                            <div className="text-left">
-                              <p className="text-xs font-bold text-amber-900">{s.name}</p>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs font-bold text-amber-900">{s.name}</p>
+                                {s.matchLevel === 'probable' && (
+                                  <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 text-[8px] font-bold uppercase rounded-sm flex items-center gap-1 border border-amber-500/20">
+                                    <AlertCircle size={8} /> Probable
+                                  </span>
+                                )}
+                                {s.matchLevel === 'possible' && (
+                                  <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-600 text-[8px] font-bold uppercase rounded-sm flex items-center gap-1 border border-blue-500/20">
+                                    <AlertCircle size={8} className="transform rotate-180" /> Posible ?
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[9px] text-amber-700/60 font-mono">{s.cif}</p>
                             </div>
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                               <span className="text-[9px] font-bold uppercase text-amber-700">Asociar</span>
                               <ChevronRight size={14} className="text-amber-700" />
                             </div>
